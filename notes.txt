@@ -25,6 +25,9 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 # Then I downloaded the example data:
 bash ./scripts/download_tum.sh
 
+
+##########################################
+# Trying on personnal laptop
 ### ERROR1
 # Then tried to run the demo but got "GLIBCXX_3.4.32' not found" err:
 python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config config/calib.yaml
@@ -71,3 +74,12 @@ python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config conf
 # Note, be sure the old process has killed itself, check nvtop to see if yellow gpu mem i
 #   back to 0.
 # Think this is a hard fix. Seems the ViT model in mast3r eats up 7gb of VRAM alone.
+
+
+###########################################
+# LAB MACHINE, wokring!
+# Try demo data
+python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config config/calib.yaml
+
+
+# Reef stuff is in other notes.txt in scratch 
