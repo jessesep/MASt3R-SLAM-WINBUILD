@@ -23,6 +23,21 @@ extra_compile_args = {
 
 if has_cuda:
     from torch.utils.cpp_extension import CUDAExtension
+    import subprocess
+
+    # Get CUDA toolkit version (not PyTorch's runtime version)
+    # PyTorch cu128 reports 12.8 but system toolkit might be 12.4
+    try:
+        nvcc_version = subprocess.check_output(['nvcc', '--version'], text=True)
+        for line in nvcc_version.split('\n'):
+            if 'release' in line:
+                version_str = line.split('release')[1].split(',')[0].strip()
+                cuda_major, cuda_minor = map(int, version_str.split('.')[:2])
+                break
+    except:
+        # Fallback to PyTorch version if nvcc unavailable
+        cuda_version = torch.version.cuda
+        cuda_major, cuda_minor = map(int, cuda_version.split(".")[:2])
 
     sources.append("mast3r_slam/backend/src/gn_kernels.cu")
     sources.append("mast3r_slam/backend/src/matching_kernels.cu")
@@ -35,6 +50,12 @@ if has_cuda:
         "-gencode=arch=compute_80,code=sm_80",
         "-gencode=arch=compute_86,code=sm_86",
     ]
+
+    if (cuda_major, cuda_minor) >= (11, 8):
+        extra_compile_args["nvcc"].append("-gencode=arch=compute_90,code=sm_90")
+
+    if (cuda_major, cuda_minor) >= (12, 8):
+        extra_compile_args["nvcc"].append("-gencode=arch=compute_120,code=sm_120")
     ext_modules = [
         CUDAExtension(
             "mast3r_slam_backends",
