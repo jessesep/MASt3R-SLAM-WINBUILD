@@ -1,0 +1,85 @@
+# To install:
+conda create -n mast3r-slam python=3.11 --solver classic
+conda activate mast3r-slam
+
+# I was getting issues as the defsault solver was libmamba so I set it back to classic:
+conda config --set solver classic
+
+# install
+conda install pytorch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 pytorch-cuda=12.4 -c pytorch -c nvidia
+
+# Oops I just forked and pulled, run this recursive git update to get the other repo's nested within mast3r-slam:
+git submodule update --init --recursive
+
+# Install the other dependnacies
+pip install -e thirdparty/mast3r
+pip install -e thirdparty/in3d
+pip install --no-build-isolation -e .
+
+# Then I got the ckpts for mast3r, as per the rdme:
+mkdir -p checkpoints/
+wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth -P checkpoints/
+wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth -P checkpoints/
+wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl -P checkpoints/
+
+# Then I downloaded the example data:
+bash ./scripts/download_tum.sh
+
+
+##########################################
+# Trying on personnal laptop
+### ERROR1
+# Then tried to run the demo but got "GLIBCXX_3.4.32' not found" err:
+python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config config/calib.yaml
+ImportError: /home/bwilliams/anaconda3/envs/mast3r-slam/bin/../lib/libstdc++.so.6: version `GLIBCXX_3.4.32' not found (required by /home/bwilliams/anaconda3/envs/mast3r-slam/lib/python3.11/site-packages/lietorch_backends.cpython-311-x86_64-linux-gnu.so)
+
+# Found libstdc++ was looking for GLIBCXX_3.4.32, this is not present in the conda env but the 
+# system does have this. So run this to install it to the conda env:
+conda install -n mast3r-slam libstdcxx-ng libgcc-ng -c conda-forge
+
+# this ran but running the check showed it didnt add it (prints nothing)
+strings ~/anaconda3/envs/mast3r-slam/lib/libstdc++.so.6 | grep GLIBCXX_3.4.32 && echo "symbol present"
+
+# more checks:
+conda list -n mast3r-slam libstdcxx-ng libgcc-ng
+ls -l ~/anaconda3/envs/mast3r-slam/lib/libstdc++.so.6*
+# prints "not found":
+strings ~/anaconda3/envs/mast3r-slam/lib/libstdc++.so.6 2>/dev/null | grep -n GLIBCXX_3.4.32 || echo "symbol not found"
+ldd ~/anaconda3/envs/mast3r-slam/lib/python3.11/site-packages/lietorch_backends.cpython-311-*.so | grep libstdc++
+
+# still not working, so run this which forces the env to use the system libstdc++:
+# backup env libstdc++ files (safe, reversible)
+mkdir -p ~/conda-backups/mast3r-slam-libstdc
+cp -a ~/anaconda3/envs/mast3r-slam/lib/libstdc++.so.6* ~/conda-backups/mast3r-slam-libstdc/
+# move the env copies out of the way so the dynamic loader uses system lib
+mv ~/anaconda3/envs/mast3r-slam/lib/libstdc++.so.6* ~/conda-backups/mast3r-slam-libstdc/
+
+
+# now test the import / run the demo
+python -c "import lietorch; print('lietorch import OK')"
+### ERROR1 NOW FIXED
+
+# Now try to run the demo again: 
+python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config config/calib.yaml
+
+### ERROR2 OOM:
+# note if getting pidfd_getfd err then restart terminal 
+# OOM when running. Falls short by just a few Mb. 
+# RTX 4060 has ~7.62 GiB VRAM but program needs more
+# Added mixed precision (AMP) to mast3r_slam/mast3r_utils.py to reduce memory:
+# - Wrapped encoder calls with autocast(device_type="cuda") in:
+#   * mast3r_symmetric_inference
+#   * mast3r_inference_mono  
+#   * mast3r_asymmetric_inference
+# Note, be sure the old process has killed itself, check nvtop to see if yellow gpu mem i
+#   back to 0.
+# Think this is a hard fix. Seems the ViT model in mast3r eats up 7gb of VRAM alone.
+
+
+###########################################
+# LAB MACHINE, wokring!
+# Try demo data
+python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config config/calib.yaml
+
+
+# Reef stuff is in other notes.txt in scratch 
