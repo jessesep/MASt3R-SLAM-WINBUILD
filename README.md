@@ -20,6 +20,26 @@
 </p>
 <br>
 
+---
+
+## 🔥 Blackwell GPU (RTX 50xx / RTX PRO 6000) Support
+
+**This fork includes patches for:**
+- ✅ NVIDIA Blackwell architecture (sm_120, compute capability 10.0)
+- ✅ PyTorch 2.8.0 compatibility (PyTorch 2.6+ API changes)
+- ✅ CUDA 12.8 native support
+
+**📖 Complete setup guide for Blackwell GPUs:** [M-SLAM_BLACKWELL_SETUP.md](https://github.com/BenUCL/3D-Reefs/blob/main/m-splam/M-SLAM_BLACKWELL_SETUP.md)
+
+**Changes from original:**
+- 4 PyTorch 2.6+ API compatibility patches (`.scalar_type()`, `.norm()`, `weights_only=False`)
+- Build instructions using `TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;9.0;12.0"` for sm_120 kernels
+- OpenGL symlink fixes for visualization
+
+If you have a Blackwell GPU (RTX 50xx series, RTX PRO 6000, etc.), follow the guide above instead of the instructions below.
+
+---
+
 # Getting Started
 ## Installation
 ```
