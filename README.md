@@ -22,21 +22,21 @@
 
 ---
 
-## 🔥 Blackwell GPU (RTX 50xx / RTX PRO 6000) Support
+## 🔥 Blackwell GPU (RTX PRO 6000 confirmed) Support
+
+I expended a lot of pain getting MASt3r-SLAM to work on my Blackwell RTX PRO 6000 GPU. 
+
+If you have this exact GPU, and potentially other Blackwell GPU's (e.g., RTX 50xx series), fork this version of MASt3R-SLAM instead as it contains fixes that handle a required Pytorch upgrade, and see the extensive `M-SLAM_BLACKWELL_SETUP.md` guide added to this repo.
 
 **This fork includes patches for:**
 - ✅ NVIDIA Blackwell architecture (sm_120, compute capability 10.0)
 - ✅ PyTorch 2.8.0 compatibility (PyTorch 2.6+ API changes)
 - ✅ CUDA 12.8 native support
 
-**📖 Complete setup guide for Blackwell GPUs:** [M-SLAM_BLACKWELL_SETUP.md](https://github.com/BenUCL/3D-Reefs/blob/main/m-splam/M-SLAM_BLACKWELL_SETUP.md)
-
 **Changes from original:**
 - 4 PyTorch 2.6+ API compatibility patches (`.scalar_type()`, `.norm()`, `weights_only=False`)
 - Build instructions using `TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;9.0;12.0"` for sm_120 kernels
 - OpenGL symlink fixes for visualization
-
-If you have a Blackwell GPU (RTX 50xx series, RTX PRO 6000, etc.), follow the guide above instead of the instructions below.
 
 ---
 
