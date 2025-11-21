@@ -73,16 +73,45 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
 def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes):
     savedir = pathlib.Path(savedir)
     savedir.mkdir(exist_ok=True, parents=True)
-    for i in range(len(keyframes)):
-        keyframe = keyframes[i]
-        t = timestamps[keyframe.frame_id]
-        filename = savedir / f"{t}.png"
-        cv2.imwrite(
-            str(filename),
-            cv2.cvtColor(
-                (keyframe.uimg.cpu().numpy() * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
-            ),
-        )
+    
+    # MODIFICATION by Ben Williams (2025-11-21): Save keyframe mapping file
+    # This records which original high-res image corresponds to each keyframe
+    # Format: timestamp original_frame_id original_filename
+    # This enables using full-resolution images for splatting while keeping
+    # MASt3R-SLAM's downsampled keyframes for pose estimation
+    mapping_file = savedir.parent / "keyframe_mapping.txt"
+    
+    # TODO FUTURE ENHANCEMENT: To use full-resolution images directly in splatting:
+    # 1. Modify this function to save full-res images from dataset.rgb_files[frame_id]
+    # 2. Update intrinsics scaling in dataloader.py to match full-res instead of 512px
+    # 3. Ensure COLMAP cameras.txt uses full-res dimensions
+    # 4. Consider memory implications - full-res images are ~4MB vs ~100KB downsampled
+    
+    with open(mapping_file, 'w') as f:
+        f.write("# Keyframe mapping: timestamp → original image\n")
+        f.write("# Format: timestamp frame_id original_filename\n")
+        f.write("# Use this to replace downsampled keyframes with high-res originals\n")
+        f.write(f"# Total keyframes: {len(keyframes)}\n")
+        
+        for i in range(len(keyframes)):
+            keyframe = keyframes[i]
+            t = timestamps[keyframe.frame_id]
+            frame_id = keyframe.frame_id
+            
+            # Save downsampled keyframe (current behavior)
+            filename = savedir / f"{t}.png"
+            cv2.imwrite(
+                str(filename),
+                cv2.cvtColor(
+                    (keyframe.uimg.cpu().numpy() * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
+                ),
+            )
+            
+            # Write mapping entry (timestamp, frame_id, placeholder for original filename)
+            # Note: Original filename will be determined by external script that knows dataset structure
+            f.write(f"{t} {frame_id}\n")
+    
+    print(f"✓ Saved keyframe mapping to {mapping_file}")
 
 
 def save_ply(filename, points, colors):

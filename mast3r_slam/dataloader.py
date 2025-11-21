@@ -270,6 +270,13 @@ class RGBFiles(MonocularDataset):
         super().__init__()
         self.use_calibration = False
         self.dataset_path = pathlib.Path(dataset_path)
+        # TODO FUTURE ENHANCEMENT (Ben Williams 2025-11-21): Support for high-res images
+        # Currently loads *.png files and downsamples to 512px width in get_image()
+        # To use full-resolution images for splatting:
+        # 1. Store self.rgb_files_fullres separately (or modify get_image() to skip resize)
+        # 2. Modify evaluate.py:save_keyframes() to save from self.rgb_files_fullres[frame_id]
+        # 3. Update intrinsics.yaml to match full-res dimensions
+        # 4. Consider memory implications and batch size adjustments
         self.rgb_files = natsorted(list((self.dataset_path).glob("*.png")))
         self.timestamps = np.arange(0, len(self.rgb_files)).astype(self.dtype) / 30.0
 
