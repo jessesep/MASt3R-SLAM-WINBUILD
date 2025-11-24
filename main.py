@@ -319,7 +319,7 @@ if __name__ == "__main__":
             last_msg.C_conf_threshold,
         )
         eval.save_keyframes(
-            save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
+            save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes, dataset
         )
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")
