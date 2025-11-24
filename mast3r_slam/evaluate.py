@@ -86,6 +86,7 @@ def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes, dataset=None
         f.write("# Format: timestamp frame_id original_filename\n")
         f.write("# Use this to map MASt3R-SLAM keyframes to original high-res images\n")
         f.write(f"# Total keyframes: {len(keyframes)}\n")
+        f.write("m-slam_file index original_file\n")
         
         for i in range(len(keyframes)):
             keyframe = keyframes[i]
@@ -106,10 +107,10 @@ def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes, dataset=None
                 # Get the original filename from dataset.rgb_files[frame_id]
                 original_file = dataset.rgb_files[frame_id]
                 original_filename = original_file.name if hasattr(original_file, 'name') else str(original_file).split('/')[-1]
-                f.write(f"{t} {frame_id} {original_filename}\n")
+                f.write(f'{t} {frame_id} "{original_filename}"\n')
             else:
                 # Fallback: just write frame_id if dataset not available
-                f.write(f"{t} {frame_id}\n")
+                f.write(f'{t} {frame_id} ""\n')
     
     print(f"✓ Saved keyframe mapping to {mapping_file}")
 
