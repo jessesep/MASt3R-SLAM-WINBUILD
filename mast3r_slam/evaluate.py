@@ -86,7 +86,7 @@ def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes, dataset=None
         f.write("# Format: timestamp frame_id original_filename\n")
         f.write("# Use this to map MASt3R-SLAM keyframes to original high-res images\n")
         f.write(f"# Total keyframes: {len(keyframes)}\n")
-        f.write("m-slam_file index original_file\n")
+        f.write("m-slam_filename index original_filename\n")
         
         for i in range(len(keyframes)):
             keyframe = keyframes[i]
