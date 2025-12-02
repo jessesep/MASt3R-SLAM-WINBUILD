@@ -3,7 +3,7 @@ import weakref
 from pathlib import Path
 
 import imgui
-import lietorch
+import mast3r_slam.lietorch_compat as lietorch  # PyTorch-based Sim3 for Windows
 import torch
 import moderngl
 import moderngl_window as mglw

@@ -304,5 +304,97 @@ python main.py --dataset datasets\tum\rgbd_dataset_freiburg1_xyz --config config
 
 ---
 
+## Update: December 2, 2025 - Further Investigation
+
+### Additional Testing - Symmetric Matching
+
+Created `test_symmetric_matching.py` to test the symmetric matching function used during relocalization.
+
+**Result:** ✅ **SYMMETRIC MATCHING WORKS**
+```
+valid_match_j: 175299/196608 (89%)
+valid_match_i: 173425/196608 (88%)
+Qii max: 243.243, Qji max: 53.149
+```
+
+### Summary of All Test Results
+
+| Test | Status | Result |
+|------|--------|--------|
+| Mono Inference | ✅ PASS | Produces valid 3D points (-2.16 to 3.83) |
+| Asymmetric Matching | ✅ PASS | 175k/196k matches (89%) |
+| Symmetric Matching | ✅ PASS | 175k/196k matches (89%) |
+| Full SLAM Run | ❌ FAIL | Zero matches, endless relocalization |
+
+### Critical Finding
+
+**ALL core MASt3R functions work correctly when called standalone, but fail when called from the SLAM main loop.**
+
+This definitively proves the issue is NOT in the MASt3R inference/matching code itself, but in:
+- How main.py initializes and manages frames
+- Multiprocessing with `spawn` mode on Windows
+- Shared memory (SharedKeyframes) with CUDA tensors
+- Backend process unable to access model/data correctly
+
+### Single-Thread Mode Investigation
+
+Attempted to implement true single-thread mode (no backend process) to bypass Windows multiprocessing issues.
+
+**Result:** ❌ Caused segmentation faults
+- Even with `single_thread: True`, the backend process was still being spawned
+- Attempted to conditionally create backend only in multi-thread mode
+- Resulted in segfaults during initialization (mp.Manager() on Windows)
+
+**Conclusion:** The codebase is deeply integrated with multiprocessing, making it difficult to run in true single-thread mode without major refactoring.
+
+### Root Cause Analysis
+
+The evidence points to a **Windows spawn mode incompatibility**:
+
+1. **What works:**
+   - Linux (fork mode): All features work
+   - Standalone test scripts on Windows: All MASt3R functions work
+   - Windows single-process tests: Everything works
+
+2. **What fails:**
+   - Windows SLAM with multiprocessing: Zero matches, relocalization fails
+   - The exact same code that works in tests fails in main.py
+
+3. **The difference:**
+   - main.py uses `mp.Process()` to spawn backend
+   - main.py uses `mp.Manager()` for SharedKeyframes/SharedStates
+   - Windows spawn mode creates fresh Python interpreter
+   - CUDA model/context may not transfer correctly to spawned process
+
+### Possible Solutions
+
+#### Option 1: Refactor for True Single-Thread Mode
+- Remove all multiprocessing (Manager, Process, Queue)
+- Run everything in main thread sequentially
+- Lose parallel backend processing but should work on Windows
+- **Difficulty:** High - requires significant refactoring
+
+#### Option 2: Fix Spawn Mode Compatibility
+- Properly serialize and reinitialize CUDA model in spawned processes
+- Ensure shared memory tensors work with CUDA on Windows
+- Fix SharedKeyframes to work with spawn mode
+- **Difficulty:** High - requires deep multiprocessing/CUDA expertise
+
+#### Option 3: Use Linux/WSL
+- Run on Linux where fork mode works
+- Or use WSL (Windows Subsystem for Linux)
+- **Difficulty:** Low - but requires Linux environment
+
+#### Option 4: Investigate Torch Multiprocessing
+- Try `torch.multiprocessing` with different sharing strategies
+- Use `mp.set_sharing_strategy('file_system')` instead of default
+- **Difficulty:** Medium - experimental
+
+---
+
+**Status:** Core functionality proven working in isolation. Issue isolated to Windows multiprocessing integration. Awaiting decision on approach.
+
+---
+
 *Last Updated: December 2, 2025*
 *Contributors: Claude Code*

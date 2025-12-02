@@ -8,9 +8,10 @@ import os
 ROOT = os.path.dirname(os.path.abspath(__file__))
 has_cuda = torch.cuda.is_available()
 
+# Convert to absolute paths with proper native separators for Windows
 include_dirs = [
-    os.path.join(ROOT, "mast3r_slam/backend/include"),
-    os.path.join(ROOT, "thirdparty/eigen"),
+    str(Path(ROOT) / "mast3r_slam" / "backend" / "include"),
+    str(Path(ROOT) / "thirdparty" / "eigen"),
 ]
 
 sources = [
@@ -43,6 +44,8 @@ if has_cuda:
     sources.append("mast3r_slam/backend/src/matching_kernels.cu")
     extra_compile_args["nvcc"] = [
         "-O3",
+        "-Xcudafe", "--diag_suppress=20014",  # Suppress __host__/__device__ warnings for Eigen
+        "-Xcudafe", "--diag_suppress=177",     # Suppress unreferenced label warnings
         "-gencode=arch=compute_60,code=sm_60",
         "-gencode=arch=compute_61,code=sm_61",
         "-gencode=arch=compute_70,code=sm_70",

@@ -4,7 +4,7 @@ import pathlib
 import sys
 import time
 import cv2
-import lietorch
+import mast3r_slam.lietorch_compat as lietorch  # PyTorch-based Sim3
 import torch
 import tqdm
 import yaml
@@ -14,6 +14,7 @@ from mast3r_slam.config import load_config, config, set_global_config
 from mast3r_slam.dataloader import Intrinsics, load_dataset
 import mast3r_slam.evaluate as eval
 from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
+from mast3r_slam.frame_singlethread import SingleThreadKeyframes, SingleThreadStates
 from mast3r_slam.mast3r_utils import (
     load_mast3r,
     load_retriever,
@@ -23,6 +24,7 @@ from mast3r_slam.multiprocess_utils import new_queue, try_get_msg
 from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
 import torch.multiprocessing as mp
+import threading
 
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
@@ -144,6 +146,8 @@ def run_backend(cfg, model, states, keyframes, K):
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
+    # WINDOWS FIX: Use file_system sharing strategy for CUDA tensors in spawn mode
+    torch.multiprocessing.set_sharing_strategy('file_system')
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_grad_enabled(False)
     device = "cuda:0"
@@ -156,6 +160,8 @@ if __name__ == "__main__":
     parser.add_argument("--save-as", default="default")
     parser.add_argument("--no-viz", action="store_true")
     parser.add_argument("--calib", default="")
+    parser.add_argument("--use-threading", action="store_true", help="Use threading.Thread instead of multiprocessing (better for Windows)")
+    parser.add_argument("--no-backend", action="store_true", help="Run without backend thread (true single-thread for Windows)")
 
     args = parser.parse_args()
 
@@ -163,9 +169,21 @@ if __name__ == "__main__":
     print(args.dataset)
     print(config)
 
-    manager = mp.Manager()
-    main2viz = new_queue(manager, args.no_viz)
-    viz2main = new_queue(manager, args.no_viz)
+    # WINDOWS FIX: Don't use Manager if using threading mode
+    if args.use_threading:
+        print("=" * 60)
+        print("WINDOWS THREADING MODE")
+        print("Using threading instead of multiprocessing")
+        print("=" * 60)
+        manager = None  # Will use threading primitives instead
+        main2viz = None
+        viz2main = None
+        # Disable viz in threading mode for simplicity
+        args.no_viz = True
+    else:
+        manager = mp.Manager()
+        main2viz = new_queue(manager, args.no_viz)
+        viz2main = new_queue(manager, args.no_viz)
 
     dataset = load_dataset(args.dataset)
     dataset.subsample(config["dataset"]["subsample"])
@@ -183,8 +201,13 @@ if __name__ == "__main__":
             intrinsics["calibration"],
         )
 
-    keyframes = SharedKeyframes(manager, h, w)
-    states = SharedStates(manager, h, w)
+    # WINDOWS FIX: Use threading-compatible versions when in threading mode or no-backend mode
+    if args.use_threading or args.no_backend:
+        keyframes = SingleThreadKeyframes(h, w)
+        states = SingleThreadStates(h, w)
+    else:
+        keyframes = SharedKeyframes(manager, h, w)
+        states = SharedStates(manager, h, w)
 
     if not args.no_viz:
         viz = mp.Process(
@@ -222,8 +245,17 @@ if __name__ == "__main__":
     tracker = FrameTracker(model, keyframes, device)
     last_msg = WindowMsg()
 
-    backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
-    backend.start()
+    # WINDOWS FIX: Use threading.Thread instead of multiprocessing for better Windows compatibility
+    if args.no_backend:
+        print("Running WITHOUT backend thread (true single-thread mode for Windows)")
+        backend = None
+    elif args.use_threading:
+        print("Using threading.Thread for backend (Windows mode)")
+        backend = threading.Thread(target=run_backend, args=(config, model, states, keyframes, K), daemon=True)
+        backend.start()
+    else:
+        backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
+        backend.start()
 
     i = 0
     fps_timer = time.time()
@@ -232,7 +264,7 @@ if __name__ == "__main__":
 
     while True:
         mode = states.get_mode()
-        msg = try_get_msg(viz2main)
+        msg = try_get_msg(viz2main) if viz2main is not None else None
         last_msg = msg if msg is not None else last_msg
         if last_msg.is_terminated:
             states.set_mode(Mode.TERMINATED)

@@ -1,4 +1,4 @@
-import lietorch
+import mast3r_slam.lietorch_compat as lietorch  # PyTorch-based Sim3 for Windows
 import torch
 from mast3r_slam.config import config
 from mast3r_slam.frame import SharedKeyframes
