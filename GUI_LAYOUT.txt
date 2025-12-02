@@ -1,0 +1,133 @@
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                    ║
+║                       MASt3R-SLAM Windows Launcher                                 ║
+║                                                                                    ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                    ║
+║  ┌─ Dataset Selection ─────────────────────────────────────────────────────────┐  ║
+║  │                                                                              │  ║
+║  │  Dataset Path: [datasets/tum/rgbd_dataset_freiburg1_xyz      ] [Browse...] │  ║
+║  │                                                                              │  ║
+║  │  Presets:  [TUM xyz]  [TUM desk]  [TUM room]                                │  ║
+║  │                                                                              │  ║
+║  └──────────────────────────────────────────────────────────────────────────────┘  ║
+║                                                                                    ║
+║  ┌─ Configuration ──────────────────────────────────────────────────────────────┐  ║
+║  │                                                                              │  ║
+║  │  Config File:  [config/base.yaml                             ] [Browse...] │  ║
+║  │                                                                              │  ║
+║  └──────────────────────────────────────────────────────────────────────────────┘  ║
+║                                                                                    ║
+║  ┌─ Options ────────────────────────────────────────────────────────────────────┐  ║
+║  │                                                                              │  ║
+║  │  [✓] Disable Visualization (--no-viz) [Recommended for Windows]             │  ║
+║  │  [✓] Disable Backend (--no-backend) [Single-thread mode, stable]            │  ║
+║  │  [ ] Use Threading (--use-threading) [Alternative to multiprocessing]       │  ║
+║  │  [ ] Save Results (trajectory and reconstruction)                           │  ║
+║  │                                                                              │  ║
+║  │  Calibration (optional): [                                    ] [Browse...] │  ║
+║  │                                                                              │  ║
+║  └──────────────────────────────────────────────────────────────────────────────┘  ║
+║                                                                                    ║
+║  ┌──────────────────────────────────────────────────────────────────────────────┐  ║
+║  │                                                                              │  ║
+║  │  ┌────────────┐  ┌────────────┐  ┌────────────┐                            │  ║
+║  │  │            │  │            │  │            │                            │  ║
+║  │  │ Start SLAM │  │ Stop SLAM  │  │   Clear    │                            │  ║
+║  │  │            │  │            │  │   Output   │                            │  ║
+║  │  └────────────┘  └────────────┘  └────────────┘                            │  ║
+║  │                                                                              │  ║
+║  └──────────────────────────────────────────────────────────────────────────────┘  ║
+║                                                                                    ║
+║  Status: ● Ready                                                                   ║
+║                                                                                    ║
+║  ┌─ Output Console ─────────────────────────────────────────────────────────────┐  ║
+║  │ ╔══════════════════════════════════════════════════════════════════════════╗ │  ║
+║  │ ║ MASt3R-SLAM Launcher initialized                                        ║ │  ║
+║  │ ║ Working directory: C:\Users\5090\MASt3R-SLAM-WINBUILD                   ║ │  ║
+║  │ ║ Ready to launch SLAM                                                    ║ │  ║
+║  │ ║                                                                          ║ │  ║
+║  │ ║ [When running:]                                                         ║ │  ║
+║  │ ║ ======================================================================== ║ │  ║
+║  │ ║ Starting SLAM...                                                        ║ │  ║
+║  │ ║ Command: python main.py --dataset datasets/tum/... --no-viz --no-backend║ │  ║
+║  │ ║ ======================================================================== ║ │  ║
+║  │ ║                                                                          ║ │  ║
+║  │ ║ [DEBUG 1] Starting main...                                              ║ │  ║
+║  │ ║ [DEBUG 2] set_start_method done                                         ║ │  ║
+║  │ ║ ...                                                                      ║ │  ║
+║  │ ║ Frame   0: INIT complete                                                ║ │  ║
+║  │ ║ Frame   1: tracked                                                      ║ │  ║
+║  │ ║ Frame   2: tracked                                                      ║ │  ║
+║  │ ║ ...                                                                      ║ │  ║
+║  │ ║                                                                          ║ │  ║
+║  │ ╚══════════════════════════════════════════════════════════════════════════╝ │  ║
+║  │                                                              [Scrollbar]    │  ║
+║  └──────────────────────────────────────────────────────────────────────────────┘  ║
+║                                                                                    ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+
+                                FEATURES
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ ✓ Easy dataset selection with presets                                         │
+│ ✓ Configuration file browser                                                  │
+│ ✓ Windows-optimized default settings                                          │
+│ ✓ Real-time output console with color coding                                  │
+│ ✓ Process control (start/stop)                                                │
+│ ✓ Status monitoring                                                           │
+│ ✓ Optional calibration file support                                           │
+│ ✓ Save results option                                                         │
+│ ✓ Threading mode option                                                       │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+                             HOW TO USE
+
+1. Double-click launch_gui.bat
+2. Select dataset (use presets or browse)
+3. Keep recommended options checked (no-viz, no-backend)
+4. Click "Start SLAM"
+5. Monitor progress in output console
+6. Wait for completion or click "Stop SLAM" to cancel
+
+                            COLOR SCHEME
+
+┌─ Title Bar ──────────────────────────────────────────────────────────────────┐
+│ Dark blue/gray background (#2c3e50)                                          │
+│ White text                                                                    │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ Buttons ────────────────────────────────────────────────────────────────────┐
+│ Start SLAM:  Green background (#27ae60) - White text                         │
+│ Stop SLAM:   Red background (#e74c3c) - White text                           │
+│ Clear Output: Standard gray button                                           │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ Output Console ─────────────────────────────────────────────────────────────┐
+│ Black background (#1e1e1e)                                                    │
+│ Green text (#00ff00) - Terminal style                                         │
+│ Monospace font (Consolas)                                                     │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ Status Indicator ───────────────────────────────────────────────────────────┐
+│ Ready:     Green (#27ae60)                                                    │
+│ Running:   Orange (#f39c12)                                                   │
+│ Completed: Green (#27ae60)                                                    │
+│ Error:     Red (#e74c3c)                                                      │
+│ Stopped:   Orange (#e67e22)                                                   │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+                          LAUNCH METHOD
+
+Option 1: Double-click launch_gui.bat
+Option 2: From command prompt:
+          cd C:\Users\5090\MASt3R-SLAM-WINBUILD
+          launch_gui.bat
+
+Option 3: Create desktop shortcut to launch_gui.bat
+
+                      KEYBOARD SHORTCUTS
+
+Ctrl+C (in console) - Stop SLAM process
+Alt+F4              - Close GUI window
+

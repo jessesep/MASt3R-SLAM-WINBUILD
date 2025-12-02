@@ -1,0 +1,425 @@
+"""
+MASt3R-SLAM Windows GUI Launcher
+A simple GUI for launching MASt3R-SLAM on Windows
+"""
+
+import tkinter as tk
+from tkinter import ttk, filedialog, scrolledtext, messagebox
+import subprocess
+import threading
+import os
+import sys
+from pathlib import Path
+
+class SLAMLauncher:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("MASt3R-SLAM Launcher (Windows)")
+        self.root.geometry("900x700")
+        self.root.resizable(True, True)
+
+        # Process handle
+        self.process = None
+        self.running = False
+
+        # Setup UI
+        self.setup_ui()
+
+        # Set default values
+        self.load_defaults()
+
+    def setup_ui(self):
+        """Setup the GUI layout"""
+
+        # Title
+        title_frame = tk.Frame(self.root, bg="#2c3e50", height=60)
+        title_frame.pack(fill=tk.X, pady=(0, 10))
+        title_frame.pack_propagate(False)
+
+        title_label = tk.Label(
+            title_frame,
+            text="MASt3R-SLAM Windows Launcher",
+            font=("Arial", 18, "bold"),
+            bg="#2c3e50",
+            fg="white"
+        )
+        title_label.pack(pady=15)
+
+        # Main container
+        main_container = tk.Frame(self.root, padx=20, pady=10)
+        main_container.pack(fill=tk.BOTH, expand=True)
+
+        # === Dataset Section ===
+        dataset_frame = tk.LabelFrame(main_container, text="Dataset Selection", padx=10, pady=10)
+        dataset_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Dataset path
+        tk.Label(dataset_frame, text="Dataset Path:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.dataset_var = tk.StringVar()
+        dataset_entry = tk.Entry(dataset_frame, textvariable=self.dataset_var, width=60)
+        dataset_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        browse_dataset_btn = tk.Button(
+            dataset_frame,
+            text="Browse...",
+            command=self.browse_dataset,
+            width=10
+        )
+        browse_dataset_btn.grid(row=0, column=2, padx=5, pady=5)
+
+        # Preset datasets
+        tk.Label(dataset_frame, text="Presets:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        preset_frame = tk.Frame(dataset_frame)
+        preset_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=5)
+
+        presets = [
+            ("TUM xyz", "datasets/tum/rgbd_dataset_freiburg1_xyz"),
+            ("TUM desk", "datasets/tum/rgbd_dataset_freiburg1_desk"),
+            ("TUM room", "datasets/tum/rgbd_dataset_freiburg1_room"),
+        ]
+
+        for i, (name, path) in enumerate(presets):
+            btn = tk.Button(
+                preset_frame,
+                text=name,
+                command=lambda p=path: self.dataset_var.set(p),
+                width=12
+            )
+            btn.grid(row=0, column=i, padx=2)
+
+        # === Config Section ===
+        config_frame = tk.LabelFrame(main_container, text="Configuration", padx=10, pady=10)
+        config_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Config file
+        tk.Label(config_frame, text="Config File:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.config_var = tk.StringVar(value="config/base.yaml")
+        config_entry = tk.Entry(config_frame, textvariable=self.config_var, width=60)
+        config_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        browse_config_btn = tk.Button(
+            config_frame,
+            text="Browse...",
+            command=self.browse_config,
+            width=10
+        )
+        browse_config_btn.grid(row=0, column=2, padx=5, pady=5)
+
+        # === Options Section ===
+        options_frame = tk.LabelFrame(main_container, text="Options", padx=10, pady=10)
+        options_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Checkboxes for options
+        self.no_viz_var = tk.BooleanVar(value=True)
+        self.no_backend_var = tk.BooleanVar(value=False)  # Changed: threading mode works better
+        self.use_threading_var = tk.BooleanVar(value=True)  # Changed: enable by default
+        self.save_results_var = tk.BooleanVar(value=False)
+
+        tk.Checkbutton(
+            options_frame,
+            text="Disable Visualization (--no-viz) [Recommended for Windows]",
+            variable=self.no_viz_var
+        ).grid(row=0, column=0, sticky=tk.W, pady=2)
+
+        tk.Checkbutton(
+            options_frame,
+            text="Disable Backend (--no-backend) [Not recommended]",
+            variable=self.no_backend_var
+        ).grid(row=1, column=0, sticky=tk.W, pady=2)
+
+        tk.Checkbutton(
+            options_frame,
+            text="Use Threading (--use-threading) [RECOMMENDED - Works best!]",
+            variable=self.use_threading_var
+        ).grid(row=2, column=0, sticky=tk.W, pady=2)
+
+        tk.Checkbutton(
+            options_frame,
+            text="Save Results (trajectory and reconstruction)",
+            variable=self.save_results_var
+        ).grid(row=3, column=0, sticky=tk.W, pady=2)
+
+        # Calibration file (optional)
+        calib_frame = tk.Frame(options_frame)
+        calib_frame.grid(row=4, column=0, sticky=tk.W, pady=5)
+
+        tk.Label(calib_frame, text="Calibration (optional):").pack(side=tk.LEFT)
+        self.calib_var = tk.StringVar()
+        calib_entry = tk.Entry(calib_frame, textvariable=self.calib_var, width=40)
+        calib_entry.pack(side=tk.LEFT, padx=5)
+
+        browse_calib_btn = tk.Button(
+            calib_frame,
+            text="Browse...",
+            command=self.browse_calib,
+            width=10
+        )
+        browse_calib_btn.pack(side=tk.LEFT)
+
+        # === Control Buttons ===
+        control_frame = tk.Frame(main_container)
+        control_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.start_btn = tk.Button(
+            control_frame,
+            text="Start SLAM",
+            command=self.start_slam,
+            bg="#27ae60",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            width=15,
+            height=2
+        )
+        self.start_btn.pack(side=tk.LEFT, padx=5)
+
+        self.stop_btn = tk.Button(
+            control_frame,
+            text="Stop SLAM",
+            command=self.stop_slam,
+            bg="#e74c3c",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            width=15,
+            height=2,
+            state=tk.DISABLED
+        )
+        self.stop_btn.pack(side=tk.LEFT, padx=5)
+
+        self.clear_btn = tk.Button(
+            control_frame,
+            text="Clear Output",
+            command=self.clear_output,
+            width=15,
+            height=2
+        )
+        self.clear_btn.pack(side=tk.LEFT, padx=5)
+
+        # === Status ===
+        status_frame = tk.Frame(main_container)
+        status_frame.pack(fill=tk.X, pady=(0, 5))
+
+        tk.Label(status_frame, text="Status:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        self.status_label = tk.Label(status_frame, text="Ready", fg="#27ae60", font=("Arial", 10))
+        self.status_label.pack(side=tk.LEFT, padx=10)
+
+        # === Output Console ===
+        output_frame = tk.LabelFrame(main_container, text="Output Console", padx=5, pady=5)
+        output_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.output_text = scrolledtext.ScrolledText(
+            output_frame,
+            wrap=tk.WORD,
+            width=80,
+            height=15,
+            bg="#1e1e1e",
+            fg="#00ff00",
+            font=("Consolas", 9),
+            insertbackground="white"
+        )
+        self.output_text.pack(fill=tk.BOTH, expand=True)
+
+    def load_defaults(self):
+        """Load default values"""
+        # Check if default dataset exists
+        default_dataset = "datasets/tum/rgbd_dataset_freiburg1_xyz"
+        if Path(default_dataset).exists():
+            self.dataset_var.set(default_dataset)
+
+        self.log("MASt3R-SLAM Launcher initialized")
+        self.log(f"Working directory: {os.getcwd()}")
+        self.log("Ready to launch SLAM\n")
+
+    def browse_dataset(self):
+        """Browse for dataset directory"""
+        directory = filedialog.askdirectory(title="Select Dataset Directory")
+        if directory:
+            self.dataset_var.set(directory)
+
+    def browse_config(self):
+        """Browse for config file"""
+        filename = filedialog.askopenfilename(
+            title="Select Config File",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")]
+        )
+        if filename:
+            self.config_var.set(filename)
+
+    def browse_calib(self):
+        """Browse for calibration file"""
+        filename = filedialog.askopenfilename(
+            title="Select Calibration File",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")]
+        )
+        if filename:
+            self.calib_var.set(filename)
+
+    def log(self, message):
+        """Add message to output console"""
+        self.output_text.insert(tk.END, message + "\n")
+        self.output_text.see(tk.END)
+        self.root.update()
+
+    def clear_output(self):
+        """Clear output console"""
+        self.output_text.delete(1.0, tk.END)
+
+    def update_status(self, text, color="#27ae60"):
+        """Update status label"""
+        self.status_label.config(text=text, fg=color)
+        self.root.update()
+
+    def build_command(self):
+        """Build the SLAM command"""
+        # Python executable
+        python_exe = sys.executable
+
+        # Base command
+        cmd = [python_exe, "main.py"]
+
+        # Dataset
+        dataset = self.dataset_var.get().strip()
+        if not dataset:
+            raise ValueError("Dataset path is required")
+        cmd.extend(["--dataset", dataset])
+
+        # Config
+        config = self.config_var.get().strip()
+        if config:
+            cmd.extend(["--config", config])
+
+        # Options
+        if self.no_viz_var.get():
+            cmd.append("--no-viz")
+
+        if self.no_backend_var.get():
+            cmd.append("--no-backend")
+
+        if self.use_threading_var.get():
+            cmd.append("--use-threading")
+
+        # Calibration
+        calib = self.calib_var.get().strip()
+        if calib:
+            cmd.extend(["--calib", calib])
+
+        return cmd
+
+    def start_slam(self):
+        """Start SLAM process"""
+        if self.running:
+            messagebox.showwarning("Already Running", "SLAM is already running!")
+            return
+
+        try:
+            # Build command
+            cmd = self.build_command()
+
+            # Validate dataset exists
+            dataset_path = Path(self.dataset_var.get())
+            if not dataset_path.exists():
+                messagebox.showerror(
+                    "Dataset Not Found",
+                    f"Dataset directory does not exist:\n{dataset_path}"
+                )
+                return
+
+            # Log command
+            self.log("="*80)
+            self.log("Starting SLAM...")
+            self.log(f"Command: {' '.join(cmd)}")
+            self.log("="*80 + "\n")
+
+            # Update UI
+            self.start_btn.config(state=tk.DISABLED)
+            self.stop_btn.config(state=tk.NORMAL)
+            self.update_status("Running...", "#f39c12")
+            self.running = True
+
+            # Start process in background thread
+            thread = threading.Thread(target=self.run_slam_process, args=(cmd,), daemon=True)
+            thread.start()
+
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+        except Exception as e:
+            self.log(f"ERROR: {e}\n")
+            messagebox.showerror("Error", f"Failed to start SLAM:\n{e}")
+            self.reset_ui()
+
+    def run_slam_process(self, cmd):
+        """Run SLAM process and capture output"""
+        try:
+            # Start process
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=os.getcwd()
+            )
+
+            # Read output line by line
+            for line in self.process.stdout:
+                if not self.running:
+                    break
+                self.log(line.rstrip())
+
+            # Wait for process to complete
+            self.process.wait()
+
+            # Check exit code
+            if self.process.returncode == 0:
+                self.log("\n" + "="*80)
+                self.log("SLAM completed successfully!")
+                self.log("="*80)
+                self.update_status("Completed", "#27ae60")
+            else:
+                self.log("\n" + "="*80)
+                self.log(f"SLAM exited with code {self.process.returncode}")
+                self.log("="*80)
+                self.update_status(f"Failed (code {self.process.returncode})", "#e74c3c")
+
+        except Exception as e:
+            self.log(f"\nERROR: {e}\n")
+            self.update_status("Error", "#e74c3c")
+        finally:
+            self.reset_ui()
+
+    def stop_slam(self):
+        """Stop SLAM process"""
+        if self.process and self.running:
+            self.log("\n" + "="*80)
+            self.log("Stopping SLAM...")
+            self.log("="*80 + "\n")
+
+            self.running = False
+            self.process.terminate()
+
+            # Wait a bit for graceful shutdown
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.log("Force killing process...")
+                self.process.kill()
+
+            self.update_status("Stopped", "#e67e22")
+            self.reset_ui()
+
+    def reset_ui(self):
+        """Reset UI to initial state"""
+        self.running = False
+        self.process = None
+        self.start_btn.config(state=tk.NORMAL)
+        self.stop_btn.config(state=tk.DISABLED)
+
+
+def main():
+    """Main entry point"""
+    root = tk.Tk()
+    app = SLAMLauncher(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
