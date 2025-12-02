@@ -364,8 +364,11 @@ if __name__ == "__main__":
             if try_reloc and backend is not None:
                 states.set_mode(Mode.RELOC)
             elif try_reloc and backend is None:
-                # In --no-backend mode, if tracking fails, just skip this frame
-                print(f"[WARNING] Tracking failed for frame {i}, skipping (no backend for relocalization)")
+                # In --no-backend mode, if tracking fails, reinitialize with current frame
+                print(f"[WARNING] Tracking failed for frame {i}, reinitializing as new keyframe (no backend)")
+                X_init, C_init = mast3r_inference_mono(model, frame)
+                frame.update_pointmap(X_init, C_init)
+                add_new_kf = True  # Force this frame to be a keyframe
             states.set_frame(frame)
 
         elif mode == Mode.RELOC:
