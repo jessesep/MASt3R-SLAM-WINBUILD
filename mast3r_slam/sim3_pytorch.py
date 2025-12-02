@@ -86,6 +86,10 @@ class Sim3:
         data_comp = torch.cat([t_comp, q_comp, s_comp], dim=-1)
         return Sim3(data_comp)
 
+    def __getitem__(self, idx):
+        """Support indexing and slicing"""
+        return Sim3(self.data[idx])
+
     def act(self, points):
         """
         Transform points: p' = s * R * p + t
@@ -424,6 +428,10 @@ class SE3:
         # Compose result
         data_comp = torch.cat([t_comp, q_comp], dim=-1)
         return SE3(data_comp)
+
+    def __getitem__(self, idx):
+        """Support indexing and slicing"""
+        return SE3(self.data[idx])
 
     def act(self, points):
         """
