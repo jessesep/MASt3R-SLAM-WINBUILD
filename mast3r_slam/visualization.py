@@ -106,6 +106,11 @@ class Window(WindowEvents):
         if self.show_axis:
             self.axis.render(self.camera)
 
+        # WINDOWS FIX: Synchronize CUDA at start of render to ensure tensors are ready
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
         curr_frame = self.states.get_frame()
         if curr_frame is not None:
             h, w = curr_frame.img_shape.flatten()
@@ -140,42 +145,70 @@ class Window(WindowEvents):
             self.frustums.make_frustum(h, w)
 
         for kf_idx in dirty_idx:
-            keyframe = self.keyframes[kf_idx]
-            h, w = keyframe.img_shape.flatten()
-            X = self.frame_X(keyframe)
-            C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
+            try:
+                keyframe = self.keyframes[kf_idx]
+                h, w = keyframe.img_shape.flatten()
+                # WINDOWS FIX: Synchronize CUDA before accessing tensors from another thread
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                X = self.frame_X(keyframe)
+                C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
 
-            if keyframe.frame_id not in self.textures:
-                ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
-                ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
-                itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
-                self.textures[keyframe.frame_id] = ptex, ctex, itex
+                if keyframe.frame_id not in self.textures:
+                    ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                    ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
+                    itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                    self.textures[keyframe.frame_id] = ptex, ctex, itex
+                    ptex, ctex, itex = self.textures[keyframe.frame_id]
+                    itex.write(keyframe.uimg.numpy().astype(np.float32).tobytes())
+
                 ptex, ctex, itex = self.textures[keyframe.frame_id]
-                itex.write(keyframe.uimg.numpy().astype(np.float32).tobytes())
-
-            ptex, ctex, itex = self.textures[keyframe.frame_id]
-            ptex.write(X.tobytes())
-            ctex.write(C.tobytes())
+                ptex.write(X.tobytes())
+                ctex.write(C.tobytes())
+            except Exception as e:
+                # WINDOWS FIX: Don't crash on texture update failure
+                print(f"[VIZ] Texture update failed for keyframe {kf_idx}: {e}")
 
         for kf_idx in range(N_keyframes):
-            keyframe = self.keyframes[kf_idx]
-            h, w = keyframe.img_shape.flatten()
-            if kf_idx == N_keyframes - 1:
-                self.kf_img_np = keyframe.uimg.numpy()
-                self.kf_img.write(self.kf_img_np)
+            try:
+                keyframe = self.keyframes[kf_idx]
+                h, w = keyframe.img_shape.flatten()
+                if kf_idx == N_keyframes - 1:
+                    self.kf_img_np = keyframe.uimg.numpy()
+                    self.kf_img.write(self.kf_img_np)
 
-            color = [1, 0, 0, 1]
-            if self.show_keyframe:
-                self.frustums.add(
-                    as_SE3(keyframe.T_WC.cpu()),
-                    scale=self.frustum_scale,
-                    color=color,
-                    thickness=self.line_thickness * self.scale,
-                )
+                color = [1, 0, 0, 1]
+                if self.show_keyframe:
+                    self.frustums.add(
+                        as_SE3(keyframe.T_WC.cpu()),
+                        scale=self.frustum_scale,
+                        color=color,
+                        thickness=self.line_thickness * self.scale,
+                    )
 
-            ptex, ctex, itex = self.textures[keyframe.frame_id]
-            if self.show_all:
-                self.render_pointmap(keyframe.T_WC.cpu(), w, h, ptex, ctex, itex)
+                # WINDOWS FIX: Check if texture exists before rendering
+                if keyframe.frame_id not in self.textures:
+                    # Texture not created yet - create it now
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                    X = self.frame_X(keyframe)
+                    C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
+                    ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                    ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
+                    itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                    self.textures[keyframe.frame_id] = ptex, ctex, itex
+                    itex.write(keyframe.uimg.numpy().astype(np.float32).tobytes())
+                    ptex.write(X.tobytes())
+                    ctex.write(C.tobytes())
+
+                ptex, ctex, itex = self.textures[keyframe.frame_id]
+                if self.show_all:
+                    self.render_pointmap(keyframe.T_WC.cpu(), w, h, ptex, ctex, itex)
+            except Exception as e:
+                # WINDOWS FIX: Don't crash on keyframe render failure
+                pass  # Silent skip to avoid flooding console
 
         if self.show_keyframe_edges:
             with self.states.lock:
@@ -444,18 +477,48 @@ def run_visualization(cfg, states, keyframes, main2viz, viz2main) -> None:
 
     timer.start()
 
+    # WINDOWS FIX: Track render loop health
+    render_count = 0
+    last_error_time = 0
+    error_count = 0
+
     while not window.is_closing:
-        current_time, delta = timer.next_frame()
+        try:
+            current_time, delta = timer.next_frame()
 
-        if window_config.clear_color is not None:
-            window.clear(*window_config.clear_color)
+            if window_config.clear_color is not None:
+                window.clear(*window_config.clear_color)
 
-        # Always bind the window framebuffer before calling render
-        window.use()
+            # Always bind the window framebuffer before calling render
+            window.use()
 
-        window.render(current_time, delta)
-        if not window.is_closing:
-            window.swap_buffers()
+            window.render(current_time, delta)
+            if not window.is_closing:
+                window.swap_buffers()
+
+            # WINDOWS FIX: Heartbeat every 100 frames
+            render_count += 1
+            if render_count % 100 == 0:
+                import sys
+                sys.stdout.flush()  # Ensure output is visible
+
+        except KeyError as e:
+            # WINDOWS FIX: Handle missing texture gracefully
+            error_count += 1
+            if current_time - last_error_time > 1.0:  # Rate limit error messages
+                print(f"[VIZ WARNING] KeyError in render loop: {e} (errors: {error_count})")
+                last_error_time = current_time
+            # Continue rendering - don't crash
+
+        except Exception as e:
+            # WINDOWS FIX: Catch ALL exceptions to prevent silent thread death
+            error_count += 1
+            if current_time - last_error_time > 1.0:  # Rate limit error messages
+                import traceback
+                print(f"[VIZ ERROR] Exception in render loop: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                last_error_time = current_time
+            # Continue rendering - don't crash
 
     state = window_config.state
     window.destroy()
