@@ -134,10 +134,54 @@ def run_backend(cfg, model, states, keyframes, K):
             states.edges_ii[:] = factor_graph.ii.cpu().tolist()
             states.edges_jj[:] = factor_graph.jj.cpu().tolist()
 
+        # DIAGNOSTIC: Track pose changes before/after optimization
+        import numpy as np
+        poses_before = {}
+        for i in range(len(keyframes)):
+            try:
+                kf = keyframes[i]
+                if kf is not None and hasattr(kf, 'T_WC') and kf.T_WC is not None:
+                    mat = kf.T_WC.matrix()
+                    if mat.dim() == 3:
+                        poses_before[i] = mat[0, :3, 3].cpu().numpy().copy()
+                    else:
+                        poses_before[i] = mat[:3, 3].cpu().numpy().copy()
+            except:
+                pass
+
         if config["use_calib"]:
             factor_graph.solve_GN_calib()
         else:
             factor_graph.solve_GN_rays()
+
+        # DIAGNOSTIC: Compare poses after optimization
+        poses_after = {}
+        max_change = 0.0
+        changed_kfs = []
+        for i in range(len(keyframes)):
+            try:
+                kf = keyframes[i]
+                if kf is not None and hasattr(kf, 'T_WC') and kf.T_WC is not None:
+                    mat = kf.T_WC.matrix()
+                    if mat.dim() == 3:
+                        poses_after[i] = mat[0, :3, 3].cpu().numpy().copy()
+                    else:
+                        poses_after[i] = mat[:3, 3].cpu().numpy().copy()
+
+                    if i in poses_before:
+                        diff = np.linalg.norm(poses_after[i] - poses_before[i])
+                        if diff > 0.01:  # More than 1cm change
+                            changed_kfs.append((i, diff))
+                            max_change = max(max_change, diff)
+            except:
+                pass
+
+        if changed_kfs:
+            print(f"[DIAGNOSTIC] Backend optimization changed {len(changed_kfs)} keyframe poses:")
+            print(f"  Max change: {max_change:.3f}m")
+            print(f"  Changed keyframes: {[kf for kf, _ in changed_kfs[:10]]}")  # Show first 10
+            if max_change > 0.5:
+                print(f"  ** WARNING: Large jump detected! ({max_change:.3f}m) **")
 
         with states.lock:
             if len(states.global_optimizer_tasks) > 0:
