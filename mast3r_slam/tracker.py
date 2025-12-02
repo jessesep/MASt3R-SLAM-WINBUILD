@@ -196,8 +196,21 @@ class FrameTracker:
         g = -A.T @ b
         cost = 0.5 * (b.T @ b).item()
 
-        L = torch.linalg.cholesky(H, upper=False)
-        tau_j = torch.cholesky_solve(g, L, upper=False).view(1, -1)
+        # WINDOWS FIX: Use SVD instead of Cholesky for numerical stability
+        # SVD is more robust to ill-conditioned matrices
+        try:
+            # Try pseudo-inverse via SVD (more stable than Cholesky on Windows)
+            tau_j = torch.linalg.lstsq(H, g, rcond=1e-6).solution.view(1, -1)
+        except Exception as e:
+            # If even SVD fails, use damped least squares
+            damping = 1e-4
+            H_damped = H + damping * torch.eye(mdim, device=H.device, dtype=H.dtype)
+            try:
+                tau_j = torch.linalg.lstsq(H_damped, g, rcond=1e-6).solution.view(1, -1)
+            except Exception as e2:
+                # Last resort: return zero update
+                print(f"[SOLVE] Both SVD methods failed, returning zero update")
+                tau_j = torch.zeros(1, mdim, device=H.device, dtype=H.dtype)
 
         return tau_j, cost
 
