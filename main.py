@@ -360,8 +360,12 @@ if __name__ == "__main__":
 
         if mode == Mode.TRACKING:
             add_new_kf, match_info, try_reloc = tracker.track(frame)
-            if try_reloc:
+            # Only enter RELOC mode if backend exists to handle it
+            if try_reloc and backend is not None:
                 states.set_mode(Mode.RELOC)
+            elif try_reloc and backend is None:
+                # In --no-backend mode, if tracking fails, just skip this frame
+                print(f"[WARNING] Tracking failed for frame {i}, skipping (no backend for relocalization)")
             states.set_frame(frame)
 
         elif mode == Mode.RELOC:
