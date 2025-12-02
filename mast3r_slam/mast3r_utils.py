@@ -202,7 +202,15 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     )
     # 4xhxwxc
     X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
+    # Debug: Check decoder output before downsampling
+    if X.abs().max() == 0:
+        print(f"  ERROR: Decoder returned all-zero 3D points!")
+        print(f"    X shape: {X.shape}, min: {X.min()}, max: {X.max()}")
+        print(f"    C shape: {C.shape}, min: {C.min()}, max: {C.max()}")
     X, C, D, Q = downsample(X, C, D, Q)
+    # Debug: Check after downsampling
+    if X.abs().max() == 0:
+        print(f"  ERROR: After downsample, 3D points are all zero!")
     return X, C, D, Q
 
 
@@ -217,6 +225,14 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     Cii, Cji = C[:b], C[b:]
     Dii, Dji = D[:b], D[b:]
     Qii, Qji = Q[:b], Q[b:]
+
+    # Debug: Check Xji after slicing
+    if Xji.abs().max() == 0:
+        print(f"  ERROR: Xji is all zeros after slicing!")
+        print(f"    X shape: {X.shape}, Xji shape: {Xji.shape}")
+        print(f"    X min: {X.min():.3f}, max: {X.max():.3f}")
+        print(f"    Xii min: {Xii.min():.3f}, max: {Xii.max():.3f}")
+        print(f"    Xji min: {Xji.min():.3f}, max: {Xji.max():.3f}")
 
     idx_i2j, valid_match_j = matching.match(
         Xii, Xji, Dii, Dji, idx_1_to_2_init=idx_i2j_init
@@ -266,7 +282,7 @@ def resize_img(img, size, square_ok=False, return_transformation=False):
     res = dict(
         img=ImgNorm(img)[None],
         true_shape=np.int32([img.size[::-1]]),
-        unnormalized_img=np.asarray(img),
+        unnormalized_img=np.array(img),  # Use np.array() to ensure writable copy on Windows
     )
     if return_transformation:
         scale_w = W1 / W

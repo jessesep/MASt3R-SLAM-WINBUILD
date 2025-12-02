@@ -66,7 +66,14 @@ class FrameTracker:
 
         match_frac = valid_opt.sum() / valid_opt.numel()
         if match_frac < self.cfg["min_match_frac"]:
-            print(f"Skipped frame {frame.frame_id}")
+            # Debug: Print why matches are failing
+            print(f"Skipped frame {frame.frame_id} - match_frac={match_frac:.4f} < {self.cfg['min_match_frac']}")
+            print(f"  valid_match_k: {valid_match_k.sum()}/{valid_match_k.numel()}")
+            print(f"  valid_Cf: {valid_Cf.sum()}, valid_Ck: {valid_Ck.sum()}, valid_Q: {valid_Q.sum()}")
+            if valid_match_k.sum() > 0:
+                print(f"  Q stats: min={Qk[valid_match_k].min():.3f}, max={Qk[valid_match_k].max():.3f}, mean={Qk[valid_match_k].mean():.3f}")
+            else:
+                print(f"  ERROR: Zero valid matches from mast3r_match_asymmetric!")
             return False, [], True
 
         try:

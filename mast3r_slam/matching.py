@@ -37,6 +37,10 @@ def prep_for_iter_proj(X11, X21, idx_1_to_2_init):
 
     # 3D points to project
     X21_vec = X21.view(b, -1, 3)
+    # Debug: Check X21 before normalization
+    if X21_vec.abs().max() == 0:
+        print(f"  ERROR: X21 is all zeros BEFORE normalization!")
+        print(f"    X21 shape: {X21.shape}, min: {X21.min():.3f}, max: {X21.max():.3f}")
     pts3d_norm = F.normalize(X21_vec, dim=-1)
 
     # Initial guesses of projections
@@ -65,6 +69,12 @@ def match_iterative_proj(X11, X21, D11, D21, idx_1_to_2_init=None):
         cfg["lambda_init"],
         cfg["convergence_thresh"],
     )
+    # Debug: Check CUDA kernel output
+    if valid_proj2.sum() == 0:
+        print(f"  DEBUG: iter_proj returned ZERO valid projections!")
+        print(f"    rays_with_grad_img: shape={rays_with_grad_img.shape}, device={rays_with_grad_img.device}")
+        print(f"    pts3d_norm: shape={pts3d_norm.shape}, min={pts3d_norm.min():.3f}, max={pts3d_norm.max():.3f}")
+        print(f"    p_init: shape={p_init.shape}, min={p_init.min():.1f}, max={p_init.max():.1f}")
     p1 = p1.long()
 
     # Check for occlusion based on distances
