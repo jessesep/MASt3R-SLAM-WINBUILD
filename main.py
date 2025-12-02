@@ -25,14 +25,10 @@ from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
 import torch.multiprocessing as mp
 import threading
+import logging
 
-# Global quiet mode flag
-QUIET_MODE = False
-
-def debug_print(*args, **kwargs):
-    """Print only if not in quiet mode"""
-    if not QUIET_MODE:
-        print(*args, **kwargs)
+# Import logging system
+from mast3r_slam.logger import setup_logger, get_logger, get_component_logger
 
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
@@ -165,31 +161,69 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="datasets/tum/rgbd_dataset_freiburg1_desk")
     parser.add_argument("--config", default="config/base.yaml")
+    parser.add_argument("--profile", default=None, choices=["fast", "balanced", "quality", "lightweight"], help="Configuration profile (overrides config file settings)")
     parser.add_argument("--save-as", default="default")
     parser.add_argument("--no-viz", action="store_true")
     parser.add_argument("--calib", default="")
     parser.add_argument("--use-threading", action="store_true", help="Use threading.Thread instead of multiprocessing (better for Windows)")
     parser.add_argument("--no-backend", action="store_true", help="Run without backend thread (true single-thread for Windows)")
     parser.add_argument("--quiet", action="store_true", help="Disable debug output for cleaner console")
+    parser.add_argument("--log-file", default=None, help="Log file path (default: logs/slam_DATETIME.log)")
+    parser.add_argument("--no-log-file", action="store_true", help="Disable log file (console only)")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level")
+    parser.add_argument("--checkpoint-interval", type=int, default=0, help="Auto-checkpoint interval in frames (0=disabled)")
+    parser.add_argument("--checkpoint-dir", default="checkpoints", help="Checkpoint directory")
     parser.add_argument("--osc-enabled", action="store_true", help="Enable OSC streaming to TouchDesigner/etc")
     parser.add_argument("--osc-ip", default="127.0.0.1", help="OSC destination IP address")
     parser.add_argument("--osc-port", type=int, default=9000, help="OSC destination port")
 
     args = parser.parse_args()
 
-    # Set quiet mode
-    QUIET_MODE = args.quiet
+    # Setup logging system
+    log_file = args.log_file
+    if args.no_log_file:
+        log_file = None
+    elif log_file is None and not args.quiet:
+        # Auto-generate log file name with timestamp
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = f"logs/slam_{timestamp}.log"
+
+    log_level = getattr(logging, args.log_level)
+    setup_logger(
+        level=log_level,
+        log_file=log_file,
+        quiet_mode=args.quiet
+    )
+
+    logger = get_logger()
 
     load_config(args.config)
-    debug_print(args.dataset)
-    debug_print(config)
+
+    # Apply profile if specified
+    if args.profile:
+        from mast3r_slam.profiles import get_profile, profile_to_config_updates
+        profile = get_profile(args.profile)
+        if profile:
+            logger.info(f"Applying profile: {profile.name} - {profile.description}")
+            logger.info(f"Expected performance: {profile.expected_fps_range}")
+            config_updates = profile_to_config_updates(profile)
+            for section, values in config_updates.items():
+                if section in config:
+                    config[section].update(values)
+                else:
+                    config[section] = values
+        else:
+            logger.warning(f"Profile '{args.profile}' not found, using config file settings")
+
+    logger.info(f"Dataset: {args.dataset}")
+    logger.debug(f"Config: {config}")
 
     # WINDOWS FIX: Use threading-compatible queues if using threading mode
     if args.use_threading:
-        print("=" * 60)
-        print("WINDOWS THREADING MODE")
-        print("Using threading instead of multiprocessing")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("WINDOWS THREADING MODE")
+        logger.info("Using threading instead of multiprocessing")
+        logger.info("=" * 60)
         manager = None  # Will use threading primitives instead
         # Use threading-safe queues for visualization
         import queue

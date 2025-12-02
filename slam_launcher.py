@@ -105,6 +105,40 @@ class SLAMLauncher:
         )
         browse_config_btn.grid(row=0, column=2, padx=5, pady=5)
 
+        # Profile selector
+        tk.Label(config_frame, text="Profile:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.profile_var = tk.StringVar(value="balanced")
+        profile_dropdown = ttk.Combobox(
+            config_frame,
+            textvariable=self.profile_var,
+            values=["balanced", "fast", "quality", "lightweight", "custom"],
+            state="readonly",
+            width=20
+        )
+        profile_dropdown.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+
+        # Profile info label
+        profile_info = tk.Label(
+            config_frame,
+            text="Balanced: Recommended for most users (3-7 FPS)",
+            fg="#666",
+            font=("Arial", 8)
+        )
+        profile_info.grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        # Update info on profile change
+        def update_profile_info(*args):
+            profile_descriptions = {
+                "fast": "Fast: Real-time preview mode (8-12 FPS, lower accuracy)",
+                "balanced": "Balanced: Recommended for most users (3-7 FPS)",
+                "quality": "Quality: Maximum accuracy (1-3 FPS, best results)",
+                "lightweight": "Lightweight: For low-end hardware (10-15 FPS, minimal)",
+                "custom": "Custom: Using config file settings"
+            }
+            profile_info.config(text=profile_descriptions.get(self.profile_var.get(), ""))
+
+        self.profile_var.trace('w', update_profile_info)
+
         # === Tabbed Options Section ===
         tab_control = ttk.Notebook(main_container)
         tab_control.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
@@ -206,16 +240,44 @@ class SLAMLauncher:
         info_label = tk.Label(osc_enable_frame, text=info_text, justify=tk.LEFT, fg="#666")
         info_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(10, 0))
 
-        # Advanced Settings
-        advanced_frame = tk.LabelFrame(osc_tab, text="Advanced Settings", padx=10, pady=10)
-        advanced_frame.pack(fill=tk.X, pady=(0, 10))
+        # Checkpoint Settings
+        checkpoint_frame = tk.LabelFrame(osc_tab, text="Checkpoint & Recovery", padx=10, pady=10)
+        checkpoint_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # Placeholder for future advanced options
-        tk.Label(
-            advanced_frame,
-            text="More advanced options coming soon...",
-            fg="#999"
-        ).pack(pady=10)
+        self.auto_checkpoint_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            checkpoint_frame,
+            text="Enable Auto-Checkpoint (Save progress every N frames)",
+            variable=self.auto_checkpoint_var
+        ).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+        tk.Label(checkpoint_frame, text="Checkpoint Interval:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.checkpoint_interval_var = tk.StringVar(value="100")
+        checkpoint_interval_entry = tk.Entry(checkpoint_frame, textvariable=self.checkpoint_interval_var, width=10)
+        checkpoint_interval_entry.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+        tk.Label(checkpoint_frame, text="frames", fg="#666").grid(row=1, column=2, sticky=tk.W)
+
+        # Logging Settings
+        logging_frame = tk.LabelFrame(osc_tab, text="Logging", padx=10, pady=10)
+        logging_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.enable_log_file_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            logging_frame,
+            text="Save log file",
+            variable=self.enable_log_file_var
+        ).grid(row=0, column=0, sticky=tk.W, pady=5)
+
+        tk.Label(logging_frame, text="Log Level:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.log_level_var = tk.StringVar(value="INFO")
+        log_level_dropdown = ttk.Combobox(
+            logging_frame,
+            textvariable=self.log_level_var,
+            values=["DEBUG", "INFO", "WARNING", "ERROR"],
+            state="readonly",
+            width=15
+        )
+        log_level_dropdown.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
 
         # === Control Buttons ===
         control_frame = tk.Frame(main_container)
@@ -348,6 +410,11 @@ class SLAMLauncher:
         if config:
             cmd.extend(["--config", config])
 
+        # Profile
+        profile = self.profile_var.get().strip()
+        if profile and profile != "custom":
+            cmd.extend(["--profile", profile])
+
         # Options
         if self.no_viz_var.get():
             cmd.append("--no-viz")
@@ -360,6 +427,20 @@ class SLAMLauncher:
 
         if self.quiet_mode_var.get():
             cmd.append("--quiet")
+
+        # Logging options
+        if not self.enable_log_file_var.get():
+            cmd.append("--no-log-file")
+
+        log_level = self.log_level_var.get().strip()
+        if log_level:
+            cmd.extend(["--log-level", log_level])
+
+        # Checkpoint options
+        if self.auto_checkpoint_var.get():
+            checkpoint_interval = self.checkpoint_interval_var.get().strip()
+            if checkpoint_interval:
+                cmd.extend(["--checkpoint-interval", checkpoint_interval])
 
         # OSC options
         if self.osc_enabled_var.get():
