@@ -185,8 +185,19 @@ class Window(WindowEvents):
                     T_WCi = lietorch.Sim3(self.keyframes.T_WC[ii, 0])
                     T_WCj = lietorch.Sim3(self.keyframes.T_WC[jj, 0])
             if ii.numel() > 0 and jj.numel() > 0:
-                t_WCi = T_WCi.matrix()[:, :3, 3].cpu().numpy()
-                t_WCj = T_WCj.matrix()[:, :3, 3].cpu().numpy()
+                # Handle both batched [N, 4, 4] and single [4, 4] cases
+                mat_i = T_WCi.matrix()
+                mat_j = T_WCj.matrix()
+
+                if mat_i.dim() == 3:  # Batched
+                    t_WCi = mat_i[:, :3, 3].cpu().numpy()
+                else:  # Single [4, 4]
+                    t_WCi = mat_i[:3, 3].unsqueeze(0).cpu().numpy()
+
+                if mat_j.dim() == 3:  # Batched
+                    t_WCj = mat_j[:, :3, 3].cpu().numpy()
+                else:  # Single [4, 4]
+                    t_WCj = mat_j[:3, 3].unsqueeze(0).cpu().numpy()
                 self.lines.add(
                     t_WCi,
                     t_WCj,

@@ -188,3 +188,8 @@ class SingleThreadStates:
         with self.lock:
             if self.reloc_sem > 0:
                 self.reloc_sem -= 1
+
+    def get_reloc_sem(self):
+        """Get reloc_sem value (for compatibility with SharedStates which uses Value)"""
+        with self.lock:
+            return self.reloc_sem

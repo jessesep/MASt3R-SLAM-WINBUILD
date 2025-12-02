@@ -328,7 +328,9 @@ if __name__ == "__main__":
             # In single threaded mode, make sure relocalization happen for every frame
             while config["single_thread"]:
                 with states.lock:
-                    if states.reloc_sem.value == 0:
+                    # Handle both SingleThreadStates (int) and SharedStates (Value)
+                    reloc_val = states.reloc_sem if isinstance(states.reloc_sem, int) else states.reloc_sem.value
+                    if reloc_val == 0:
                         break
                 time.sleep(0.01)
 
