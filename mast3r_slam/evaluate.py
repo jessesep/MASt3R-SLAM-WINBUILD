@@ -81,7 +81,7 @@ def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes, dataset=None
     # MASt3R-SLAM's downsampled keyframes for pose estimation
     mapping_file = savedir.parent / "keyframe_mapping.txt"
     
-    with open(mapping_file, 'w') as f:
+    with open(mapping_file, 'w', encoding='utf-8') as f:
         f.write("# Keyframe mapping: timestamp → original image\n")
         f.write("# Format: timestamp frame_id original_filename\n")
         f.write("# Use this to map MASt3R-SLAM keyframes to original high-res images\n")
