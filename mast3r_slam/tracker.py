@@ -118,7 +118,9 @@ class FrameTracker:
                     img_size,
                 )
         except Exception as e:
-            print(f"Cholesky failed {frame.frame_id}")
+            print(f"[ERROR] Tracking failed for frame {frame.frame_id}: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return False, [], True
 
         frame.T_WC = T_WCf
