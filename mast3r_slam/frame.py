@@ -72,16 +72,9 @@ class Frame:
             self.C[new_mask] = C[new_mask]
             self.N = 1
         elif filtering_mode == "weighted_pointmap":
-            print(f"[UPDATE_POINTMAP] weighted_pointmap mode", flush=True)
-            print(f"[UPDATE_POINTMAP] self.C shape={self.C.shape}, C shape={C.shape}", flush=True)
-            print(f"[UPDATE_POINTMAP] self.X_canon shape={self.X_canon.shape}, X shape={X.shape}", flush=True)
-            print(f"[UPDATE_POINTMAP] About to compute weighted average...", flush=True)
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
-            print(f"[UPDATE_POINTMAP] X_canon updated", flush=True)
             self.C = self.C + C
-            print(f"[UPDATE_POINTMAP] C updated", flush=True)
             self.N += 1
-            print(f"[UPDATE_POINTMAP] N incremented to {self.N}", flush=True)
         elif filtering_mode == "weighted_spherical":
 
             def cartesian_to_spherical(P):

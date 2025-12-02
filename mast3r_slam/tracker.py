@@ -26,76 +26,46 @@ class FrameTracker:
         self.idx_f2k = None
 
     def track(self, frame: Frame):
-        print(f"[TRACK] Starting track for frame {frame.frame_id}", flush=True)
         keyframe = self.keyframes.last_keyframe()
-        print(f"[TRACK] Got last keyframe: {keyframe.frame_id}", flush=True)
 
-        print(f"[TRACK] Calling mast3r_match_asymmetric...", flush=True)
         idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf = mast3r_match_asymmetric(
             self.model, frame, keyframe, idx_i2j_init=self.idx_f2k
         )
-        print(f"[TRACK] mast3r_match_asymmetric done", flush=True)
         # Save idx for next
         self.idx_f2k = idx_f2k.clone()
-        print(f"[TRACK] idx cloned", flush=True)
 
         # Get rid of batch dim
         idx_f2k = idx_f2k[0]
         valid_match_k = valid_match_k[0]
-        print(f"[TRACK] Batch dim removed", flush=True)
 
-        print(f"[TRACK] Computing Qk...", flush=True)
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
-        print(f"[TRACK] Qk computed", flush=True)
 
         # Update keyframe pointmap after registration (need pose)
-        print(f"[TRACK] About to call frame.update_pointmap(Xff, Cff)...", flush=True)
-        print(f"[TRACK] frame.N={frame.N}, Xff shape={Xff.shape}, Cff shape={Cff.shape}", flush=True)
         frame.update_pointmap(Xff, Cff)
-        print(f"[TRACK] frame.update_pointmap done", flush=True)
 
-        print(f"[TRACK] Getting config and img_size...", flush=True)
         use_calib = config["use_calib"]
         img_size = frame.img.shape[-2:]
-        print(f"[TRACK] use_calib={use_calib}, img_size={img_size}", flush=True)
         if use_calib:
             K = keyframe.K
         else:
             K = None
 
         # Get poses and point correspondneces and confidences
-        print(f"[TRACK] Calling get_points_poses...", flush=True)
         Xf, Xk, T_WCf, T_WCk, Cf, Ck, meas_k, valid_meas_k = self.get_points_poses(
             frame, keyframe, idx_f2k, img_size, use_calib, K
         )
-        print(f"[TRACK] get_points_poses done", flush=True)
 
         # Get valid
         # Use canonical confidence average
-        print(f"[TRACK] Computing valid masks...", flush=True)
         valid_Cf = Cf > self.cfg["C_conf"]
-        print(f"[TRACK] valid_Cf computed", flush=True)
         valid_Ck = Ck > self.cfg["C_conf"]
-        print(f"[TRACK] valid_Ck computed", flush=True)
         valid_Q = Qk > self.cfg["Q_conf"]
-        print(f"[TRACK] valid_Q computed", flush=True)
 
         valid_opt = valid_match_k & valid_Cf & valid_Ck & valid_Q
-        print(f"[TRACK] valid_opt computed", flush=True)
         valid_kf = valid_match_k & valid_Q
-        print(f"[TRACK] valid_kf computed", flush=True)
 
         match_frac = valid_opt.sum() / valid_opt.numel()
-        print(f"[TRACK] match_frac computed: {match_frac:.4f}", flush=True)
         if match_frac < self.cfg["min_match_frac"]:
-            # Debug: Print why matches are failing
-            print(f"Skipped frame {frame.frame_id} - match_frac={match_frac:.4f} < {self.cfg['min_match_frac']}")
-            print(f"  valid_match_k: {valid_match_k.sum()}/{valid_match_k.numel()}")
-            print(f"  valid_Cf: {valid_Cf.sum()}, valid_Ck: {valid_Ck.sum()}, valid_Q: {valid_Q.sum()}")
-            if valid_match_k.sum() > 0:
-                print(f"  Q stats: min={Qk[valid_match_k].min():.3f}, max={Qk[valid_match_k].max():.3f}, mean={Qk[valid_match_k].mean():.3f}")
-            else:
-                print(f"  ERROR: Zero valid matches from mast3r_match_asymmetric!")
             return False, [], True
 
         try:
@@ -119,8 +89,6 @@ class FrameTracker:
                 )
         except Exception as e:
             print(f"[ERROR] Tracking failed for frame {frame.frame_id}: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
             return False, [], True
 
         frame.T_WC = T_WCf
@@ -209,7 +177,6 @@ class FrameTracker:
                 tau_j = torch.linalg.lstsq(H_damped, g, rcond=1e-6).solution.view(1, -1)
             except Exception as e2:
                 # Last resort: return zero update
-                print(f"[SOLVE] Both SVD methods failed, returning zero update")
                 tau_j = torch.zeros(1, mdim, device=H.device, dtype=H.dtype)
 
         return tau_j, cost
@@ -248,9 +215,6 @@ class FrameTracker:
             ):
                 break
             old_cost = new_cost
-
-            if step == self.cfg["max_iters"] - 1:
-                print(f"max iters reached {last_error}")
 
         # Assign new pose based on relative pose
         T_WCf = T_WCk * T_CkCf
@@ -300,9 +264,6 @@ class FrameTracker:
             ):
                 break
             old_cost = new_cost
-
-            if step == self.cfg["max_iters"] - 1:
-                print(f"max iters reached {last_error}")
 
         # Assign new pose based on relative pose
         T_WCf = T_WCk * T_CkCf

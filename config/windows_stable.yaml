@@ -1,0 +1,58 @@
+use_calib: False
+single_thread: True
+dataset:
+  subsample: 1
+  img_downsample: 1
+  center_principle_point: True
+
+matching:
+  max_iter: 10
+  lambda_init: 1e-8
+  convergence_thresh: 1e-06
+  dist_thresh: 1e-1
+  radius: 3
+  dilation_max: 5
+
+tracking:
+  min_match_frac: 0.15  # INCREASED from 0.05 - require at least 15% matches
+  max_iters: 50
+  C_conf: 0.0
+  Q_conf: 2.5  # INCREASED from 1.5 - require higher quality matches
+  rel_error: 1e-3
+  delta_norm: 1e-3
+  huber: 1.345
+  match_frac_thresh: 0.6  # DECREASED from 0.7 - create more keyframes to avoid long tracking
+  sigma_ray: 0.003
+  sigma_dist: 1e+1
+  sigma_pixel: 1.0
+  sigma_depth: 1e+1
+  sigma_point: 0.05
+  pixel_border: -10
+  depth_eps: 1e-06
+  filtering_mode: weighted_pointmap
+  filtering_score: median
+
+local_opt:
+  pin: 1
+  window_size: 1e+6
+  C_conf: 0.0
+  Q_conf: 2.5  # INCREASED from 1.5
+  min_match_frac: 0.2  # INCREASED from 0.1
+  pixel_border: -10
+  depth_eps: 1e-06
+  max_iters: 10
+  sigma_ray: 0.003
+  sigma_dist: 1e+1
+  sigma_pixel: 1.0
+  sigma_depth: 1e+1
+  sigma_point: 0.05
+  delta_norm: 1e-08
+  use_cuda: True
+
+retrieval:
+  k: 2
+  min_thresh: 1e-2
+
+reloc:
+  min_match_frac: 0.3
+  strict: True
