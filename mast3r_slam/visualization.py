@@ -87,6 +87,12 @@ class Window(WindowEvents):
         self.show_curr_pointmap = True
         self.show_axis = True
 
+        # WINDOWS FIX: Limit visualization load to prevent freezing
+        # Note: These settings don't significantly impact FPS (SLAM is the bottleneck)
+        # but they help keep the visualization responsive and reduce GPU memory
+        self.max_keyframes_render = 10  # Only render N most recent keyframes (10 is good balance)
+        self.point_skip = 1  # Render every Nth point (1=all, 2=half, 4=quarter)
+
         self.textures = dict()
         self.mtime = self.pointmap_prog.extra["meta"].resolved_path.stat().st_mtime
         self.curr_img, self.kf_img = Image(), Image()
@@ -106,11 +112,6 @@ class Window(WindowEvents):
         if self.show_axis:
             self.axis.render(self.camera)
 
-        # WINDOWS FIX: Synchronize CUDA at start of render to ensure tensors are ready
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-
         curr_frame = self.states.get_frame()
         if curr_frame is not None:
             h, w = curr_frame.img_shape.flatten()
@@ -119,40 +120,67 @@ class Window(WindowEvents):
             self.curr_img_np = curr_frame.uimg.numpy()
             self.curr_img.write(self.curr_img_np)
 
+            # WINDOWS FIX: Validate pose before using it for camera
             cam_T_WC = as_SE3(curr_frame.T_WC).cpu()
-            if self.follow_cam:
-                T_WC = cam_T_WC.matrix().numpy().astype(
-                    dtype=np.float32
-                ) @ translation_matrix(np.array([0, 0, -2], dtype=np.float32))
-                self.camera.follow_cam(np.linalg.inv(T_WC))
-            else:
-                self.camera.unfollow_cam()
-            self.frustums.add(
-                cam_T_WC,
-                scale=self.frustum_scale,
-                color=[0, 1, 0, 1],
-                thickness=self.line_thickness * self.scale,
-            )
+            T_WC_matrix = cam_T_WC.matrix().numpy().astype(dtype=np.float32)
 
-        with self.keyframes.lock:
-            N_keyframes = len(self.keyframes)
-            dirty_idx = self.keyframes.get_dirty_idx()
+            # Check for NaN/inf values that would break camera
+            if np.isfinite(T_WC_matrix).all():
+                if self.follow_cam:
+                    T_WC = T_WC_matrix @ translation_matrix(np.array([0, 0, -2], dtype=np.float32))
+                    self.camera.follow_cam(np.linalg.inv(T_WC))
+                else:
+                    self.camera.unfollow_cam()
+                self.frustums.add(
+                    cam_T_WC,
+                    scale=self.frustum_scale,
+                    color=[0, 1, 0, 1],
+                    thickness=self.line_thickness * self.scale,
+                )
+            else:
+                # Invalid pose - don't update camera, keep last valid position
+                pass
+
+        # WINDOWS FIX: Use non-blocking lock to prevent visualization thread starvation
+        # If we can't get the lock immediately, use cached values and skip updates
+        if not hasattr(self, '_cached_N_keyframes'):
+            self._cached_N_keyframes = 0
+            self._cached_dirty_idx = []
+
+        lock_acquired = self.keyframes.lock.acquire(blocking=False)
+        if lock_acquired:
+            try:
+                N_keyframes = len(self.keyframes)
+                dirty_idx = self.keyframes.get_dirty_idx()
+                self._cached_N_keyframes = N_keyframes
+                self._cached_dirty_idx = list(dirty_idx) if hasattr(dirty_idx, '__iter__') else []
+            finally:
+                self.keyframes.lock.release()
+        else:
+            # Use cached values - don't block visualization
+            N_keyframes = self._cached_N_keyframes
+            dirty_idx = []  # Don't process dirty idx if we couldn't get lock
 
         # Initialize frustum geometry from first keyframe if not already done
         if N_keyframes > 0 and self.frustums.frustum is None:
-            first_kf = self.keyframes[0]
-            h, w = first_kf.img_shape.flatten()
-            self.frustums.make_frustum(h, w)
+            if self.keyframes.lock.acquire(blocking=False):
+                try:
+                    first_kf = self.keyframes[0]
+                    h, w = first_kf.img_shape.flatten()
+                    self.frustums.make_frustum(h, w)
+                finally:
+                    self.keyframes.lock.release()
 
         for kf_idx in dirty_idx:
             try:
                 keyframe = self.keyframes[kf_idx]
                 h, w = keyframe.img_shape.flatten()
-                # WINDOWS FIX: Synchronize CUDA before accessing tensors from another thread
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
                 X = self.frame_X(keyframe)
+
+                # WINDOWS FIX: Validate point cloud data in dirty updates
+                if not np.isfinite(X).all():
+                    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
                 C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
 
                 if keyframe.frame_id not in self.textures:
@@ -170,7 +198,9 @@ class Window(WindowEvents):
                 # WINDOWS FIX: Don't crash on texture update failure
                 print(f"[VIZ] Texture update failed for keyframe {kf_idx}: {e}")
 
-        for kf_idx in range(N_keyframes):
+        # WINDOWS FIX: Only render most recent keyframes to reduce load
+        start_kf = max(0, N_keyframes - self.max_keyframes_render)
+        for kf_idx in range(start_kf, N_keyframes):
             try:
                 keyframe = self.keyframes[kf_idx]
                 h, w = keyframe.img_shape.flatten()
@@ -178,10 +208,19 @@ class Window(WindowEvents):
                     self.kf_img_np = keyframe.uimg.numpy()
                     self.kf_img.write(self.kf_img_np)
 
+                # WINDOWS FIX: Validate keyframe pose before rendering
+                kf_T_WC = keyframe.T_WC.cpu()
+                kf_T_WC_se3 = as_SE3(kf_T_WC)
+                kf_matrix = kf_T_WC_se3.matrix().numpy()
+
+                # Skip keyframes with invalid poses (NaN/inf)
+                if not np.isfinite(kf_matrix).all():
+                    continue
+
                 color = [1, 0, 0, 1]
                 if self.show_keyframe:
                     self.frustums.add(
-                        as_SE3(keyframe.T_WC.cpu()),
+                        kf_T_WC_se3,
                         scale=self.frustum_scale,
                         color=color,
                         thickness=self.line_thickness * self.scale,
@@ -190,10 +229,13 @@ class Window(WindowEvents):
                 # WINDOWS FIX: Check if texture exists before rendering
                 if keyframe.frame_id not in self.textures:
                     # Texture not created yet - create it now
-                    import torch
-                    if torch.cuda.is_available():
-                        torch.cuda.synchronize()
                     X = self.frame_X(keyframe)
+
+                    # WINDOWS FIX: Validate point cloud data
+                    if not np.isfinite(X).all():
+                        # Replace NaN/inf with zeros to prevent rendering issues
+                        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
                     C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
                     ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
                     ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
@@ -205,19 +247,27 @@ class Window(WindowEvents):
 
                 ptex, ctex, itex = self.textures[keyframe.frame_id]
                 if self.show_all:
-                    self.render_pointmap(keyframe.T_WC.cpu(), w, h, ptex, ctex, itex)
+                    self.render_pointmap(kf_T_WC, w, h, ptex, ctex, itex, skip=self.point_skip)
             except Exception as e:
                 # WINDOWS FIX: Don't crash on keyframe render failure
                 pass  # Silent skip to avoid flooding console
 
         if self.show_keyframe_edges:
-            with self.states.lock:
-                ii = torch.tensor(self.states.edges_ii, dtype=torch.long)
-                jj = torch.tensor(self.states.edges_jj, dtype=torch.long)
-                if ii.numel() > 0 and jj.numel() > 0:
-                    T_WCi = lietorch.Sim3(self.keyframes.T_WC[ii, 0])
-                    T_WCj = lietorch.Sim3(self.keyframes.T_WC[jj, 0])
-            if ii.numel() > 0 and jj.numel() > 0:
+            # WINDOWS FIX: Use non-blocking lock acquisition
+            ii = torch.tensor([], dtype=torch.long)
+            jj = torch.tensor([], dtype=torch.long)
+            T_WCi = None
+            T_WCj = None
+            if self.states.lock.acquire(blocking=False):
+                try:
+                    ii = torch.tensor(list(self.states.edges_ii), dtype=torch.long)
+                    jj = torch.tensor(list(self.states.edges_jj), dtype=torch.long)
+                    if ii.numel() > 0 and jj.numel() > 0:
+                        T_WCi = lietorch.Sim3(self.keyframes.T_WC[ii, 0])
+                        T_WCj = lietorch.Sim3(self.keyframes.T_WC[jj, 0])
+                finally:
+                    self.states.lock.release()
+            if ii.numel() > 0 and jj.numel() > 0 and T_WCi is not None:
                 # Handle both batched [N, 4, 4] and single [4, 4] cases
                 mat_i = T_WCi.matrix()
                 mat_j = T_WCj.matrix()
@@ -242,6 +292,11 @@ class Window(WindowEvents):
                 curr_frame.K = self.keyframes.get_intrinsics()
             h, w = curr_frame.img_shape.flatten()
             X = self.frame_X(curr_frame)
+
+            # WINDOWS FIX: Validate current frame point cloud data
+            if not np.isfinite(X).all():
+                X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
             C = curr_frame.C.cpu().numpy().astype(np.float32)
             if "curr" not in self.textures:
                 ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
@@ -359,6 +414,24 @@ class Window(WindowEvents):
         )
 
         imgui.spacing()
+        imgui.separator()
+        imgui.text("Performance (Windows)")
+
+        # Point skip slider (1=all, 2=half, 4=quarter, 8=eighth)
+        _, self.point_skip = imgui.slider_int(
+            "point_skip", self.point_skip, 1, 8
+        )
+        if imgui.is_item_hovered():
+            imgui.set_tooltip("1=all points, 2=half, 4=quarter, 8=eighth")
+
+        # Max keyframes to render
+        _, self.max_keyframes_render = imgui.slider_int(
+            "max_kf_render", self.max_keyframes_render, 1, 50
+        )
+        if imgui.is_item_hovered():
+            imgui.set_tooltip("Max keyframes to render (reduces GPU load)")
+
+        imgui.spacing()
 
         gui_size = imgui.get_content_region_available()
         scale = gui_size[0] / self.curr_img.texture.size[0]
@@ -382,7 +455,7 @@ class Window(WindowEvents):
     def send_msg(self):
         self.viz2main.put(self.state)
 
-    def render_pointmap(self, T_WC, w, h, ptex, ctex, itex, use_img=True, depth_bias=0):
+    def render_pointmap(self, T_WC, w, h, ptex, ctex, itex, use_img=True, depth_bias=0, skip=1):
         w, h = int(w), int(h)
         ptex.use(0)
         ctex.use(1)
@@ -403,7 +476,10 @@ class Window(WindowEvents):
         vao.program["use_img"] = use_img
         if "depth_bias" in self.pointmap_prog:
             vao.program["depth_bias"] = depth_bias
-        vao.render(mode=moderngl.POINTS, vertices=w * h)
+        # WINDOWS FIX: Render fewer points to reduce GPU load
+        # Skip renders every Nth point (1=all, 2=half, 4=quarter)
+        num_vertices = (w * h) // skip
+        vao.render(mode=moderngl.POINTS, vertices=num_vertices)
         vao.release()
 
     def frame_X(self, frame):

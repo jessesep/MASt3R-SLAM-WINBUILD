@@ -182,18 +182,11 @@ def mast3r_match_symmetric(model, feat_i, pos_i, feat_j, pos_j, shape_i, shape_j
 
 @torch.inference_mode
 def mast3r_asymmetric_inference(model, frame_i, frame_j):
-    # Debug: Check input frames
-    print(f"  DEBUG: mast3r_asymmetric_inference called")
-    print(f"    frame_i: id={frame_i.frame_id}, feat={frame_i.feat is not None}, img shape={frame_i.img.shape}")
-    print(f"    frame_j: id={frame_j.frame_id}, feat={frame_j.feat is not None}, img shape={frame_j.img.shape}")
-
     if frame_i.feat is None:
-        print(f"    Encoding frame_i features...")
         frame_i.feat, frame_i.pos, _ = model._encode_image(
             frame_i.img, frame_i.img_true_shape
         )
     if frame_j.feat is None:
-        print(f"    Encoding frame_j features...")
         frame_j.feat, frame_j.pos, _ = model._encode_image(
             frame_j.img, frame_j.img_true_shape
         )
@@ -202,7 +195,6 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     pos1, pos2 = frame_i.pos, frame_j.pos
     shape1, shape2 = frame_i.img_true_shape, frame_j.img_true_shape
 
-    print(f"    Calling decoder...")
     res11, res21 = decoder(model, feat1, feat2, pos1, pos2, shape1, shape2)
     res = [res11, res21]
     X, C, D, Q = zip(
@@ -210,16 +202,7 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     )
     # 4xhxwxc
     X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
-    print(f"    Decoder output: X shape={X.shape}, min={X.min():.3f}, max={X.max():.3f}")
-    # Debug: Check decoder output before downsampling
-    if X.abs().max() == 0:
-        print(f"  ERROR: Decoder returned all-zero 3D points!")
-        print(f"    X shape: {X.shape}, min: {X.min()}, max: {X.max()}")
-        print(f"    C shape: {C.shape}, min: {C.min()}, max: {C.max()}")
     X, C, D, Q = downsample(X, C, D, Q)
-    # Debug: Check after downsampling
-    if X.abs().max() == 0:
-        print(f"  ERROR: After downsample, 3D points are all zero!")
     return X, C, D, Q
 
 
@@ -234,14 +217,6 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     Cii, Cji = C[:b], C[b:]
     Dii, Dji = D[:b], D[b:]
     Qii, Qji = Q[:b], Q[b:]
-
-    # Debug: Check Xji after slicing
-    if Xji.abs().max() == 0:
-        print(f"  ERROR: Xji is all zeros after slicing!")
-        print(f"    X shape: {X.shape}, Xji shape: {Xji.shape}")
-        print(f"    X min: {X.min():.3f}, max: {X.max():.3f}")
-        print(f"    Xii min: {Xii.min():.3f}, max: {Xii.max():.3f}")
-        print(f"    Xji min: {Xji.min():.3f}, max: {Xji.max():.3f}")
 
     idx_i2j, valid_match_j = matching.match(
         Xii, Xji, Dii, Dji, idx_1_to_2_init=idx_i2j_init

@@ -105,15 +105,28 @@ class SLAMLauncher:
         )
         browse_config_btn.grid(row=0, column=2, padx=5, pady=5)
 
-        # === Options Section ===
-        options_frame = tk.LabelFrame(main_container, text="Options", padx=10, pady=10)
-        options_frame.pack(fill=tk.X, pady=(0, 10))
+        # === Tabbed Options Section ===
+        tab_control = ttk.Notebook(main_container)
+        tab_control.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # Basic Options Tab
+        basic_tab = tk.Frame(tab_control, padx=10, pady=10)
+        tab_control.add(basic_tab, text="Basic Options")
+
+        # OSC / Advanced Tab
+        osc_tab = tk.Frame(tab_control, padx=10, pady=10)
+        tab_control.add(osc_tab, text="OSC / Advanced")
+
+        # === Basic Options (in basic_tab) ===
+        options_frame = tk.Frame(basic_tab)
+        options_frame.pack(fill=tk.BOTH, expand=True)
 
         # Checkboxes for options
         self.no_viz_var = tk.BooleanVar(value=True)
         self.no_backend_var = tk.BooleanVar(value=False)  # Changed: threading mode works better
         self.use_threading_var = tk.BooleanVar(value=True)  # Changed: enable by default
         self.save_results_var = tk.BooleanVar(value=False)
+        self.quiet_mode_var = tk.BooleanVar(value=False)  # Quiet mode (disable debug output)
 
         tk.Checkbutton(
             options_frame,
@@ -139,9 +152,15 @@ class SLAMLauncher:
             variable=self.save_results_var
         ).grid(row=3, column=0, sticky=tk.W, pady=2)
 
+        tk.Checkbutton(
+            options_frame,
+            text="Quiet Mode (--quiet) [Disable debug output - cleaner console]",
+            variable=self.quiet_mode_var
+        ).grid(row=4, column=0, sticky=tk.W, pady=2)
+
         # Calibration file (optional)
         calib_frame = tk.Frame(options_frame)
-        calib_frame.grid(row=4, column=0, sticky=tk.W, pady=5)
+        calib_frame.grid(row=5, column=0, sticky=tk.W, pady=5)
 
         tk.Label(calib_frame, text="Calibration (optional):").pack(side=tk.LEFT)
         self.calib_var = tk.StringVar()
@@ -155,6 +174,48 @@ class SLAMLauncher:
             width=10
         )
         browse_calib_btn.pack(side=tk.LEFT)
+
+        # === OSC / Advanced Options (in osc_tab) ===
+        # OSC Settings
+        osc_enable_frame = tk.LabelFrame(osc_tab, text="OSC Streaming", padx=10, pady=10)
+        osc_enable_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.osc_enabled_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            osc_enable_frame,
+            text="Enable OSC Streaming (Send SLAM data to TouchDesigner/etc)",
+            variable=self.osc_enabled_var
+        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=5)
+
+        # OSC IP
+        tk.Label(osc_enable_frame, text="OSC IP:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.osc_ip_var = tk.StringVar(value="127.0.0.1")
+        osc_ip_entry = tk.Entry(osc_enable_frame, textvariable=self.osc_ip_var, width=20)
+        osc_ip_entry.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+
+        # OSC Port
+        tk.Label(osc_enable_frame, text="OSC Port:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        self.osc_port_var = tk.StringVar(value="9000")
+        osc_port_entry = tk.Entry(osc_enable_frame, textvariable=self.osc_port_var, width=20)
+        osc_port_entry.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
+
+        # OSC Info
+        info_text = "OSC sends camera poses, point clouds, and status to external apps.\n" \
+                   "Default: 127.0.0.1:9000 (localhost)\n" \
+                   "Messages: /slam/camera/pose, /slam/pointcloud/chunk, /slam/status"
+        info_label = tk.Label(osc_enable_frame, text=info_text, justify=tk.LEFT, fg="#666")
+        info_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(10, 0))
+
+        # Advanced Settings
+        advanced_frame = tk.LabelFrame(osc_tab, text="Advanced Settings", padx=10, pady=10)
+        advanced_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Placeholder for future advanced options
+        tk.Label(
+            advanced_frame,
+            text="More advanced options coming soon...",
+            fg="#999"
+        ).pack(pady=10)
 
         # === Control Buttons ===
         control_frame = tk.Frame(main_container)
@@ -296,6 +357,19 @@ class SLAMLauncher:
 
         if self.use_threading_var.get():
             cmd.append("--use-threading")
+
+        if self.quiet_mode_var.get():
+            cmd.append("--quiet")
+
+        # OSC options
+        if self.osc_enabled_var.get():
+            cmd.append("--osc-enabled")
+            osc_ip = self.osc_ip_var.get().strip()
+            osc_port = self.osc_port_var.get().strip()
+            if osc_ip:
+                cmd.extend(["--osc-ip", osc_ip])
+            if osc_port:
+                cmd.extend(["--osc-port", osc_port])
 
         # Calibration
         calib = self.calib_var.get().strip()

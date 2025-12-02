@@ -31,6 +31,7 @@ def save_traj(
     logdir = pathlib.Path(logdir)
     logdir.mkdir(exist_ok=True, parents=True)
     logfile = logdir / logfile
+    skipped_poses = 0
     with open(logfile, "w") as f:
         # for keyframe_id in frames.keyframe_ids:
         for i in range(len(frames)):
@@ -40,8 +41,19 @@ def save_traj(
                 T_WC = as_SE3(keyframe.T_WC)
             else:
                 T_WC = intrinsics.refine_pose_with_calibration(keyframe)
-            x, y, z, qx, qy, qz, qw = T_WC.data.numpy().reshape(-1)
+
+            # WINDOWS FIX: Validate pose before writing
+            pose_data = T_WC.data.numpy().reshape(-1)
+            if not np.isfinite(pose_data).all():
+                print(f"[SAVE] Skipping trajectory pose {i}: invalid data (NaN/inf)")
+                skipped_poses += 1
+                continue
+
+            x, y, z, qx, qy, qz, qw = pose_data
             f.write(f"{t} {x} {y} {z} {qx} {qy} {qz} {qw}\n")
+
+    if skipped_poses > 0:
+        print(f"[SAVE] Skipped {skipped_poses} invalid trajectory poses")
 
 
 def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
@@ -49,8 +61,22 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
     savedir.mkdir(exist_ok=True, parents=True)
     pointclouds = []
     colors = []
+    skipped_kfs = 0
     for i in range(len(keyframes)):
         keyframe = keyframes[i]
+
+        # WINDOWS FIX: Validate keyframe pose before processing
+        try:
+            pose_matrix = keyframe.T_WC.matrix().cpu().numpy()
+            if not np.isfinite(pose_matrix).all():
+                print(f"[SAVE] Skipping keyframe {i}: invalid pose (NaN/inf)")
+                skipped_kfs += 1
+                continue
+        except Exception as e:
+            print(f"[SAVE] Skipping keyframe {i}: pose error ({e})")
+            skipped_kfs += 1
+            continue
+
         if config["use_calib"]:
             X_canon = constrain_points_to_ray(
                 keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
@@ -62,11 +88,21 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
             keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
             > c_conf_threshold
         )
+
+        # WINDOWS FIX: Filter out points with NaN/inf coordinates
+        valid_coords = np.isfinite(pW).all(axis=1)
+        valid = valid & valid_coords
+
         pointclouds.append(pW[valid])
         colors.append(color[valid])
+
+    if skipped_kfs > 0:
+        print(f"[SAVE] Skipped {skipped_kfs} keyframes with invalid poses")
+
     pointclouds = np.concatenate(pointclouds, axis=0)
     colors = np.concatenate(colors, axis=0)
 
+    print(f"[SAVE] Saving {len(pointclouds)} points to {filename}")
     save_ply(savedir / filename, pointclouds, colors)
 
 

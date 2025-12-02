@@ -26,6 +26,14 @@ from mast3r_slam.visualization import WindowMsg, run_visualization
 import torch.multiprocessing as mp
 import threading
 
+# Global quiet mode flag
+QUIET_MODE = False
+
+def debug_print(*args, **kwargs):
+    """Print only if not in quiet mode"""
+    if not QUIET_MODE:
+        print(*args, **kwargs)
+
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     # we are adding and then removing from the keyframe, so we need to be careful.
@@ -162,12 +170,19 @@ if __name__ == "__main__":
     parser.add_argument("--calib", default="")
     parser.add_argument("--use-threading", action="store_true", help="Use threading.Thread instead of multiprocessing (better for Windows)")
     parser.add_argument("--no-backend", action="store_true", help="Run without backend thread (true single-thread for Windows)")
+    parser.add_argument("--quiet", action="store_true", help="Disable debug output for cleaner console")
+    parser.add_argument("--osc-enabled", action="store_true", help="Enable OSC streaming to TouchDesigner/etc")
+    parser.add_argument("--osc-ip", default="127.0.0.1", help="OSC destination IP address")
+    parser.add_argument("--osc-port", type=int, default=9000, help="OSC destination port")
 
     args = parser.parse_args()
 
+    # Set quiet mode
+    QUIET_MODE = args.quiet
+
     load_config(args.config)
-    print(args.dataset)
-    print(config)
+    debug_print(args.dataset)
+    debug_print(config)
 
     # WINDOWS FIX: Use threading-compatible queues if using threading mode
     if args.use_threading:
