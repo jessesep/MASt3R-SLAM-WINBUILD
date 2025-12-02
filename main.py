@@ -312,6 +312,7 @@ if __name__ == "__main__":
 
     i = 0
     fps_timer = time.time()
+    last_reinit_frame = -1  # Track last reinit to avoid flooding
 
     frames = []
 
@@ -364,11 +365,17 @@ if __name__ == "__main__":
             if try_reloc and backend is not None:
                 states.set_mode(Mode.RELOC)
             elif try_reloc and backend is None:
-                # In --no-backend mode, if tracking fails, reinitialize with current frame
-                print(f"[WARNING] Tracking failed for frame {i}, reinitializing as new keyframe (no backend)")
-                X_init, C_init = mast3r_inference_mono(model, frame)
-                frame.update_pointmap(X_init, C_init)
-                add_new_kf = True  # Force this frame to be a keyframe
+                # In --no-backend mode, if tracking fails, reinitialize occasionally
+                # Rate limit: only reinit every 10 frames to avoid flooding visualization
+                if i - last_reinit_frame >= 10:
+                    print(f"[WARNING] Tracking failed for frame {i}, reinitializing as new keyframe (no backend)")
+                    X_init, C_init = mast3r_inference_mono(model, frame)
+                    frame.update_pointmap(X_init, C_init)
+                    add_new_kf = True  # Force this frame to be a keyframe
+                    last_reinit_frame = i
+                else:
+                    # Skip this frame - too soon after last reinit
+                    print(f"[INFO] Tracking failed for frame {i}, skipping (too soon after last reinit)")
             states.set_frame(frame)
 
         elif mode == Mode.RELOC:
