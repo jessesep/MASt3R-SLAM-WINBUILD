@@ -324,9 +324,11 @@ if __name__ == "__main__":
             X, C = mast3r_inference_mono(model, frame)
             frame.update_pointmap(X, C)
             states.set_frame(frame)
-            states.queue_reloc()
+            # Only queue reloc if backend exists
+            if backend is not None:
+                states.queue_reloc()
             # In single threaded mode, make sure relocalization happen for every frame
-            while config["single_thread"]:
+            while config["single_thread"] and backend is not None:
                 with states.lock:
                     # Handle both SingleThreadStates (int) and SharedStates (Value)
                     reloc_val = states.reloc_sem if isinstance(states.reloc_sem, int) else states.reloc_sem.value
@@ -339,9 +341,11 @@ if __name__ == "__main__":
 
         if add_new_kf:
             keyframes.append(frame)
-            states.queue_global_optimization(len(keyframes) - 1)
+            # Only queue optimization if backend exists
+            if backend is not None:
+                states.queue_global_optimization(len(keyframes) - 1)
             # In single threaded mode, wait for the backend to finish
-            while config["single_thread"]:
+            while config["single_thread"] and backend is not None:
                 with states.lock:
                     if len(states.global_optimizer_tasks) == 0:
                         break
