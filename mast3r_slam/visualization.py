@@ -107,30 +107,37 @@ class Window(WindowEvents):
             self.axis.render(self.camera)
 
         curr_frame = self.states.get_frame()
-        h, w = curr_frame.img_shape.flatten()
-        self.frustums.make_frustum(h, w)
+        if curr_frame is not None:
+            h, w = curr_frame.img_shape.flatten()
+            self.frustums.make_frustum(h, w)
 
-        self.curr_img_np = curr_frame.uimg.numpy()
-        self.curr_img.write(self.curr_img_np)
+            self.curr_img_np = curr_frame.uimg.numpy()
+            self.curr_img.write(self.curr_img_np)
 
-        cam_T_WC = as_SE3(curr_frame.T_WC).cpu()
-        if self.follow_cam:
-            T_WC = cam_T_WC.matrix().numpy().astype(
-                dtype=np.float32
-            ) @ translation_matrix(np.array([0, 0, -2], dtype=np.float32))
-            self.camera.follow_cam(np.linalg.inv(T_WC))
-        else:
-            self.camera.unfollow_cam()
-        self.frustums.add(
-            cam_T_WC,
-            scale=self.frustum_scale,
-            color=[0, 1, 0, 1],
-            thickness=self.line_thickness * self.scale,
-        )
+            cam_T_WC = as_SE3(curr_frame.T_WC).cpu()
+            if self.follow_cam:
+                T_WC = cam_T_WC.matrix().numpy().astype(
+                    dtype=np.float32
+                ) @ translation_matrix(np.array([0, 0, -2], dtype=np.float32))
+                self.camera.follow_cam(np.linalg.inv(T_WC))
+            else:
+                self.camera.unfollow_cam()
+            self.frustums.add(
+                cam_T_WC,
+                scale=self.frustum_scale,
+                color=[0, 1, 0, 1],
+                thickness=self.line_thickness * self.scale,
+            )
 
         with self.keyframes.lock:
             N_keyframes = len(self.keyframes)
             dirty_idx = self.keyframes.get_dirty_idx()
+
+        # Initialize frustum geometry from first keyframe if not already done
+        if N_keyframes > 0 and self.frustums.frustum is None:
+            first_kf = self.keyframes[0]
+            h, w = first_kf.img_shape.flatten()
+            self.frustums.make_frustum(h, w)
 
         for kf_idx in dirty_idx:
             keyframe = self.keyframes[kf_idx]
@@ -186,7 +193,7 @@ class Window(WindowEvents):
                     thickness=self.line_thickness * self.scale,
                     color=[0, 1, 0, 1],
                 )
-        if self.show_curr_pointmap and self.states.get_mode() != Mode.INIT:
+        if self.show_curr_pointmap and self.states.get_mode() != Mode.INIT and curr_frame is not None:
             if config["use_calib"]:
                 curr_frame.K = self.keyframes.get_intrinsics()
             h, w = curr_frame.img_shape.flatten()
@@ -336,7 +343,7 @@ class Window(WindowEvents):
         ptex.use(0)
         ctex.use(1)
         itex.use(2)
-        model = T_WC.matrix().numpy().astype(np.float32).T
+        model = np.ascontiguousarray(T_WC.matrix().numpy().astype(np.float32).T)
 
         vao = self.ctx.vertex_array(self.pointmap_prog, [], skip_errors=True)
         vao.program["m_camera"].write(self.camera.gl_matrix())

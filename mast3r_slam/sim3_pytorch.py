@@ -307,6 +307,42 @@ class Sim3:
 
         return V
 
+    def cpu(self):
+        """Move to CPU"""
+        return Sim3(self.data.cpu())
+
+    def matrix(self):
+        """Convert to 4x4 homogeneous transformation matrix"""
+        t, q, s = self._decompose()
+        batch_size = t.shape[0]
+
+        # Convert quaternion to rotation matrix
+        R = self._quat_to_rotation_matrix(q)
+
+        # Scale the rotation matrix
+        R = s.unsqueeze(-1) * R
+
+        # Build 4x4 matrix
+        mat = torch.zeros(batch_size, 4, 4, device=self.device, dtype=self.dtype)
+        mat[:, :3, :3] = R
+        mat[:, :3, 3] = t
+        mat[:, 3, 3] = 1.0
+
+        return mat.squeeze(0) if batch_size == 1 else mat
+
+    @staticmethod
+    def _quat_to_rotation_matrix(q):
+        """Convert quaternion to 3x3 rotation matrix"""
+        x, y, z, w = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
+
+        R = torch.stack([
+            torch.stack([1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y)], dim=-1),
+            torch.stack([2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x)], dim=-1),
+            torch.stack([2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y)], dim=-1),
+        ], dim=-2)
+
+        return R
+
     def __repr__(self):
         return f"Sim3(data={self.data})"
 
@@ -419,6 +455,22 @@ class SE3:
             transformed = transformed.squeeze(0)
 
         return transformed
+
+    def matrix(self):
+        """Convert to 4x4 homogeneous transformation matrix"""
+        t, q = self._decompose()
+        batch_size = t.shape[0]
+
+        # Convert quaternion to rotation matrix (reuse Sim3's method)
+        R = Sim3._quat_to_rotation_matrix(q)
+
+        # Build 4x4 matrix
+        mat = torch.zeros(batch_size, 4, 4, device=self.device, dtype=self.dtype)
+        mat[:, :3, :3] = R
+        mat[:, :3, 3] = t
+        mat[:, 3, 3] = 1.0
+
+        return mat.squeeze(0) if batch_size == 1 else mat
 
     def __repr__(self):
         return f"SE3(data={self.data})"

@@ -169,17 +169,17 @@ if __name__ == "__main__":
     print(args.dataset)
     print(config)
 
-    # WINDOWS FIX: Don't use Manager if using threading mode
+    # WINDOWS FIX: Use threading-compatible queues if using threading mode
     if args.use_threading:
         print("=" * 60)
         print("WINDOWS THREADING MODE")
         print("Using threading instead of multiprocessing")
         print("=" * 60)
         manager = None  # Will use threading primitives instead
-        main2viz = None
-        viz2main = None
-        # Disable viz in threading mode for simplicity
-        args.no_viz = True
+        # Use threading-safe queues for visualization
+        import queue
+        main2viz = queue.Queue() if not args.no_viz else None
+        viz2main = queue.Queue() if not args.no_viz else None
     else:
         manager = mp.Manager()
         main2viz = new_queue(manager, args.no_viz)
@@ -210,10 +210,19 @@ if __name__ == "__main__":
         states = SharedStates(manager, h, w)
 
     if not args.no_viz:
-        viz = mp.Process(
-            target=run_visualization,
-            args=(config, states, keyframes, main2viz, viz2main),
-        )
+        if args.use_threading:
+            # Use threading.Thread for visualization in threading mode
+            viz = threading.Thread(
+                target=run_visualization,
+                args=(config, states, keyframes, main2viz, viz2main),
+                daemon=True
+            )
+        else:
+            # Use multiprocessing.Process for standard mode
+            viz = mp.Process(
+                target=run_visualization,
+                args=(config, states, keyframes, main2viz, viz2main),
+            )
         viz.start()
 
     model = load_mast3r(device=device)
