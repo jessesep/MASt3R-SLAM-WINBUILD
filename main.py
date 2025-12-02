@@ -361,7 +361,14 @@ if __name__ == "__main__":
             continue
 
         if mode == Mode.TRACKING:
-            add_new_kf, match_info, try_reloc = tracker.track(frame)
+            try:
+                add_new_kf, match_info, try_reloc = tracker.track(frame)
+            except Exception as e:
+                print(f"[ERROR] Uncaught exception in tracker.track for frame {i}: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Treat as tracking failure
+                add_new_kf, match_info, try_reloc = False, [], True
             # Only enter RELOC mode if backend exists to handle it
             if try_reloc and backend is not None:
                 states.set_mode(Mode.RELOC)
@@ -425,6 +432,12 @@ if __name__ == "__main__":
         if i % 30 == 0:
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
+
+        # WINDOWS FIX: Yield to visualization thread to prevent starvation
+        # Python's GIL can cause threads to starve; a small sleep helps
+        if args.use_threading and not args.no_viz:
+            time.sleep(0.001)  # 1ms yield for visualization
+
         i += 1
 
     if dataset.save_results:
