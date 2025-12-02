@@ -325,7 +325,9 @@ class Intrinsics:
 
 
 def load_dataset(dataset_path):
-    split_dataset_type = dataset_path.split("/")
+    # Use pathlib to handle both forward and back slashes on Windows
+    dataset_path_str = str(pathlib.Path(dataset_path).as_posix())
+    split_dataset_type = dataset_path_str.split("/")
     if "tum" in split_dataset_type:
         return TUMDataset(dataset_path)
     if "euroc" in split_dataset_type:
