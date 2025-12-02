@@ -313,6 +313,7 @@ if __name__ == "__main__":
     i = 0
     fps_timer = time.time()
     last_reinit_frame = -1  # Track last reinit to avoid flooding
+    consecutive_failures = 0  # Track death spiral: consecutive tracking failures
 
     frames = []
 
@@ -364,11 +365,20 @@ if __name__ == "__main__":
             # Only enter RELOC mode if backend exists to handle it
             if try_reloc and backend is not None:
                 states.set_mode(Mode.RELOC)
+                consecutive_failures += 1
             elif try_reloc and backend is None:
                 # In --no-backend mode, if tracking fails, reinitialize occasionally
-                # Rate limit: only reinit every 10 frames to avoid flooding visualization
-                if i - last_reinit_frame >= 10:
-                    print(f"[WARNING] Tracking failed for frame {i}, reinitializing as new keyframe (no backend)")
+                consecutive_failures += 1
+
+                # Death spiral detection: if we've had 3+ consecutive failures,
+                # use more aggressive rate limiting (every 3 frames instead of 10)
+                rate_limit = 3 if consecutive_failures >= 3 else 10
+
+                if i - last_reinit_frame >= rate_limit:
+                    if consecutive_failures >= 3:
+                        print(f"[DEATH SPIRAL] {consecutive_failures} consecutive failures, reinitializing frame {i} (aggressive)")
+                    else:
+                        print(f"[WARNING] Tracking failed for frame {i}, reinitializing as new keyframe (no backend)")
                     X_init, C_init = mast3r_inference_mono(model, frame)
                     frame.update_pointmap(X_init, C_init)
                     add_new_kf = True  # Force this frame to be a keyframe
@@ -376,6 +386,9 @@ if __name__ == "__main__":
                 else:
                     # Skip this frame - too soon after last reinit
                     print(f"[INFO] Tracking failed for frame {i}, skipping (too soon after last reinit)")
+            else:
+                # Tracking succeeded, reset consecutive failures
+                consecutive_failures = 0
             states.set_frame(frame)
 
         elif mode == Mode.RELOC:
